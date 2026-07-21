@@ -39,7 +39,7 @@ def _core_channel_tiles(light: Light) -> list[dict]:
             for ent in light.get("channels") or []]
 
 
-def build_core(groups: list[Group], designer_url: str = "/local/aipai/designer.html") -> dict:
+def build_core(groups: list[Group], designer_url: str = "/aipai_light/designer.html") -> dict:
     """Dashboard using only stock cards (tiles, headings, badges)."""
     views: list[dict] = []
     sections, badges = [], []
@@ -78,7 +78,7 @@ def build_core(groups: list[Group], designer_url: str = "/local/aipai/designer.h
 
 # -- mushroom (needs the Mushroom + auto-entities HACS cards) ---------------
 
-def build_mushroom(groups: list[Group], designer_url: str = "/local/aipai/designer.html") -> dict:
+def build_mushroom(groups: list[Group], designer_url: str = "/aipai_light/designer.html") -> dict:
     views: list[dict] = []
     sections = []
     for tank, lights in groups:

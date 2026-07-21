@@ -25,7 +25,7 @@ generate_dashboard:
     designer_url:
       name: Designer URL
       description: Where the schedule designer is served from.
-      default: /local/aipai/designer.html
+      default: /aipai_light/designer.html
       selector:
         text:
 

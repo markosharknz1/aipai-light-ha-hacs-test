@@ -62,7 +62,7 @@ _PERIOD_SCHEMA = vol.Schema({
 _GENERATE_DASHBOARD_SCHEMA = vol.Schema({
     vol.Optional("style", default="core"): vol.Any("core", "mushroom"),
     vol.Optional("tanks"): cv.string,          # 'Display=123,456;Frag=789'
-    vol.Optional("designer_url", default="/local/aipai/designer.html"): cv.string,
+    vol.Optional("designer_url", default="/aipai_light/designer.html"): cv.string,
 })
 
 _SET_MOON_SCHEMA = vol.Schema({

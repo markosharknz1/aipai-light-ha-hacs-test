@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIPAI Reef Schedule Designer</title>
+<style>
+:root{
+  --bg:#08131f; --panel:#0e2033; --panel2:#122a41; --line:#1e3c56;
+  --ink:#d6e6f2; --muted:#6d8aa0; --accent:#33cfe0; --sun:#ffb021; --moon:#8fb7ff;
+  --danger:#ff6b6b; --radius:14px;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+}
+@media (prefers-color-scheme: light){
+  :root{ --bg:#eaf1f7; --panel:#ffffff; --panel2:#f0f5fa; --line:#cfddea;
+    --ink:#0e2233; --muted:#5b7286; --accent:#0a94a8; --sun:#c77a00; --moon:#3f6bd6; }
+}
+:root[data-theme="dark"]{ --bg:#08131f; --panel:#0e2033; --panel2:#122a41; --line:#1e3c56;
+  --ink:#d6e6f2; --muted:#6d8aa0; --accent:#33cfe0; --sun:#ffb021; --moon:#8fb7ff; }
+:root[data-theme="light"]{ --bg:#eaf1f7; --panel:#ffffff; --panel2:#f0f5fa; --line:#cfddea;
+  --ink:#0e2233; --muted:#5b7286; --accent:#0a94a8; --sun:#c77a00; --moon:#3f6bd6; }
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3{text-wrap:balance;margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 20px 64px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px 20px;margin-bottom:20px}
+header h1{font-size:1.5rem;letter-spacing:-.02em;font-weight:650}
+header .sub{color:var(--muted);font-size:.85rem;max-width:52ch}
+.eyebrow{font-family:var(--mono);text-transform:uppercase;letter-spacing:.16em;
+  font-size:.68rem;color:var(--accent)}
+.grid{display:grid;grid-template-columns:1fr 360px;gap:18px;align-items:start}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px 16px 18px}
+.panel h2{font-size:.95rem;font-weight:600;margin-bottom:12px;display:flex;
+  align-items:center;gap:8px}
+.panel h2 .tag{margin-left:auto;font-family:var(--mono);font-size:.66rem;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.12em}
+
+/* chart */
+.chartcard{padding:14px}
+.chart-wrap{position:relative;width:100%;overflow-x:auto}
+svg.chart{display:block;width:100%;height:auto;touch-action:none}
+.legend{display:flex;flex-wrap:wrap;gap:6px 10px;margin-top:12px}
+.chip{display:inline-flex;align-items:center;gap:7px;font-size:.78rem;
+  font-family:var(--mono);padding:4px 9px;border:1px solid var(--line);border-radius:999px;
+  cursor:pointer;background:var(--panel2);user-select:none}
+.chip[data-on="0"]{opacity:.4}
+.chip .sw{width:11px;height:11px;border-radius:3px;box-shadow:0 0 6px currentColor}
+.chip.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+
+/* controls */
+.row{display:flex;align-items:center;gap:10px;margin:9px 0}
+.row label{font-size:.8rem;color:var(--muted);min-width:78px}
+.row .val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:.82rem;
+  margin-left:auto;min-width:52px;text-align:right}
+input[type=range]{flex:1;accent-color:var(--accent);height:22px}
+input[type=text],input[type=number],select,input[type=datetime-local]{
+  background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+  border-radius:8px;padding:7px 9px;font-family:var(--mono);font-size:.82rem;width:100%}
+input[type=color]{width:38px;height:32px;padding:0;border:1px solid var(--line);
+  border-radius:8px;background:var(--panel2)}
+.field{display:flex;flex-direction:column;gap:5px;margin:9px 0}
+.field span{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button{font-family:var(--sans);cursor:pointer;border-radius:9px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--ink);padding:8px 12px;font-size:.82rem;font-weight:550}
+button.primary{background:var(--accent);color:#04222a;border-color:transparent}
+button:focus-visible,.chip:focus-visible,input:focus-visible,select:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px}
+.switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:.82rem}
+.switch input{position:absolute;opacity:0}
+.switch .track{width:38px;height:22px;border-radius:999px;background:var(--line);
+  position:relative;transition:background .15s}
+.switch .track::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;
+  border-radius:50%;background:#fff;transition:transform .15s}
+.switch input:checked+.track{background:var(--accent)}
+.switch input:checked+.track::after{transform:translateX(16px)}
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.tabs button{padding:6px 11px;font-size:.78rem}
+.tabs button.active{background:var(--accent);color:#04222a;border-color:transparent}
+.tabpane{display:none}.tabpane.active{display:block}
+pre{background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+  padding:12px;overflow-x:auto;font-family:var(--mono);font-size:.75rem;margin:0;
+  color:var(--ink)}
+.export-block{margin:12px 0}
+.export-block .hd{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.export-block .hd h3{font-size:.82rem;font-weight:600}
+.export-block .hd button{margin-left:auto;padding:5px 10px;font-size:.74rem}
+.note{font-size:.76rem;color:var(--muted);margin-top:6px}
+.pill{font-family:var(--mono);font-size:.7rem;padding:2px 7px;border-radius:999px;
+  background:var(--panel2);border:1px solid var(--line);color:var(--muted)}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--accent);color:#04222a;padding:9px 16px;border-radius:10px;font-size:.82rem;
+  font-weight:600;opacity:0;pointer-events:none;transition:.25s}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">AIPAI · Doseen reef lighting</div>
+      <h1>Reef Schedule Designer</h1>
+    </div>
+    <p class="sub">Shape each channel's day, set the clock &amp; timezone, and program a
+      moonlight window for spawning — then export ready-to-run Home Assistant service calls.</p>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT: the graphic -->
+    <div>
+      <div class="panel chartcard">
+        <h2>The day <span class="tag" id="modelTag">A8-SE8 · 8 ch</span></h2>
+        <div class="chart-wrap">
+          <svg class="chart" id="chart" viewBox="0 0 720 320" preserveAspectRatio="none"
+               role="img" aria-label="24-hour spectral schedule graph"></svg>
+        </div>
+        <div class="legend" id="legend"></div>
+      </div>
+
+      <div class="panel" style="margin-top:18px">
+        <h2>Channel <span class="tag" id="selName">White</span></h2>
+        <p class="note" style="margin-top:-4px">Drag the handles on the graph, or fine-tune here.
+          A channel holds its peak between start and end, ramping like sunrise/sunset either side.</p>
+        <label class="switch" style="margin:8px 0 4px">
+          <input type="checkbox" id="chEnabled"><span class="track"></span>
+          <span>Channel active</span>
+        </label>
+        <div class="row"><label>Peak level</label>
+          <input type="range" id="chLevel" min="0" max="100" step="1">
+          <span class="val" id="chLevelV">80%</span></div>
+        <div class="row"><label>Start</label>
+          <input type="range" id="chStart" min="0" max="24" step="0.25">
+          <span class="val" id="chStartV">10:00</span></div>
+        <div class="row"><label>End</label>
+          <input type="range" id="chEnd" min="0" max="24" step="0.25">
+          <span class="val" id="chEndV">16:00</span></div>
+        <div class="row"><label>Sunrise ramp</label>
+          <input type="range" id="chUp" min="0" max="6" step="0.25">
+          <span class="val" id="chUpV">2.0 h</span></div>
+        <div class="row"><label>Sunset ramp</label>
+          <input type="range" id="chDown" min="0" max="6" step="0.25">
+          <span class="val" id="chDownV">2.0 h</span></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: control panels -->
+    <div class="panel">
+      <div class="tabs" role="tablist">
+        <button class="active" data-tab="setup">Setup</button>
+        <button data-tab="clock">Clock</button>
+        <button data-tab="moon">Moon</button>
+        <button data-tab="apply">Apply</button>
+        <button data-tab="export">Export</button>
+      </div>
+
+      <div class="tabpane active" id="tab-setup">
+        <div class="field"><span>Device serial(s)</span>
+          <input type="text" id="serial" value="12345678"
+                 placeholder="one serial, or several: 12345678, 12345678">
+          <span class="note">Enter several serials separated by commas to push the same
+            schedule, clock and moon to all of them at once.</span></div>
+        <div class="field"><span>Model / channels</span>
+          <select id="model"></select></div>
+        <div class="two">
+          <div class="field"><span>Auto-on hour</span>
+            <input type="number" id="openHour" min="0" max="23" value="8"></div>
+          <div class="field"><span>Auto-off hour</span>
+            <input type="number" id="closeHour" min="0" max="23" value="20"></div>
+        </div>
+        <p class="note">Light-level profile (sets a tank-appropriate day):</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button data-profile="high">High · SPS / display</button>
+          <button data-profile="medium">Medium · frag</button>
+          <button data-profile="low">Low · FOWLR</button>
+          <button data-profile="flat">Clear all</button>
+        </div>
+
+        <div style="border-top:1px solid var(--line);margin:16px 0 4px"></div>
+        <div class="field"><span>Tank group</span>
+          <select id="groupSel"><option value="">— use serials above —</option></select></div>
+        <div class="two">
+          <input id="groupName" placeholder="Group name, e.g. Display">
+          <button id="btnSaveGroup">Save serials as group</button>
+        </div>
+        <button id="btnDelGroup" style="margin-top:0">Delete selected group</button>
+        <p class="note">Groups chain a tank's lights together — pick one to target all its
+          serials at once when you Apply. Each tank can have its own light-level profile and schedule.</p>
+      </div>
+
+      <div class="tabpane" id="tab-clock">
+        <label class="switch" style="margin-bottom:12px">
+          <input type="checkbox" id="autoClock" checked><span class="track"></span>
+          <span>Sync to current time</span>
+        </label>
+        <div class="field"><span>Timezone (UTC offset)</span>
+          <select id="tz"></select></div>
+        <div class="field" id="manualDtField" hidden><span>Device-local date &amp; time</span>
+          <input type="datetime-local" id="manualDt"></div>
+        <p class="note" id="clockPreview"></p>
+      </div>
+
+      <div class="tabpane" id="tab-moon">
+        <label class="switch" style="margin-bottom:12px">
+          <input type="checkbox" id="moonRun"><span class="track"></span>
+          <span>Moonlight enabled</span>
+        </label>
+        <div class="row"><label>Colour</label>
+          <input type="color" id="moonColor" value="#00a0e9">
+          <span class="val" id="moonColorV">#00A0E9</span></div>
+        <div class="row"><label>Level</label>
+          <input type="range" id="moonLevel" min="0" max="100" value="35">
+          <span class="val" id="moonLevelV">35%</span></div>
+        <div class="two">
+          <div class="field"><span>Start</span><input type="text" id="moonStart" value="21:00"></div>
+          <div class="field"><span>End</span><input type="text" id="moonEnd" value="06:00"></div>
+        </div>
+        <p class="note">Moonlight runs as its own timer on the fixture — useful as a
+          consistent lunar cue to help trigger coral spawning.</p>
+      </div>
+
+      <div class="tabpane" id="tab-apply">
+        <p class="note">Push straight to your lights through Home Assistant. Leave the URL
+          blank when this page is opened from inside HA (<code>/local/…</code>); otherwise
+          enter your HA URL. The token is a Long-Lived Access Token (HA profile page).</p>
+        <div class="field"><span>HA base URL (optional)</span>
+          <input type="text" id="haUrl" placeholder="e.g. http://homeassistant.local:8123"></div>
+        <div class="field"><span>Long-lived access token</span>
+          <input type="password" id="haToken" placeholder="paste token"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="btnLoad">Load from device</button>
+          <button id="btnApplySched" class="primary" style="flex:1">Apply schedule</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <button id="btnApplyClock" style="flex:1">Sync clock</button>
+          <button id="btnApplyMoon" style="flex:1">Apply moon</button>
+        </div>
+        <div id="applyOut" class="note" style="margin-top:10px"></div>
+        <p class="note">“Apply schedule” writes the curves to every serial listed in Setup and
+          switches the light to Scheduled mode. Loaded schedules are approximated back into the
+          segment editor.</p>
+      </div>
+
+      <div class="tabpane" id="tab-export">
+        <p class="note">Copy into an automation or Developer Tools → Actions. Each call
+          targets the light by serial.</p>
+        <div class="export-block">
+          <div class="hd"><h3>Schedule</h3><button data-copy="exSched">Copy</button></div>
+          <pre id="exSched"></pre>
+        </div>
+        <div class="export-block">
+          <div class="hd"><h3>Clock &amp; timezone</h3><button data-copy="exClock">Copy</button></div>
+          <pre id="exClock"></pre>
+        </div>
+        <div class="export-block">
+          <div class="hd"><h3>Moonlight</h3><button data-copy="exMoon">Copy</button></div>
+          <pre id="exMoon"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast">Copied</div>
+
+<script>
+"use strict";
+// ---- channel tables (from the decrypted app's model tables) ----
+const DEFAULT8 = ["White","Blue","Red","Green","Blue2","Purple","UV","Warm"];
+const COLORS = {White:"#f2efdc",Blue:"#2e6bff",Red:"#ff4d4d",Green:"#46c93a",
+  Blue2:"#23c6e6",Purple:"#a64dff",UV:"#6c4dff",Warm:"#ffb021","Cool White":"#dbe7ff",
+  "Orange Light":"#ff8a3d","Royal Blue":"#2a4bff","Broadband Blue":"#2b8fff",
+  "Violet Blue":"#6a5cff","Crossover UV":"#7d4dff",Blue1:"#2e6bff",Blue3:"#1f4dd6",Olive:"#8fb13a"};
+const MODELS = {
+  "A8-SE8 / PRO (8 ch)":["White","Blue","Red","Green","Blue2","Purple","UV","Warm"],
+  "A8-SEB / PROB Blue-Max (8 ch)":["Blue1","Blue2","Warm","Olive","Blue3","Purple","UV","White"],
+  "A7-S / A8-SE 6 ch (saltwater)":["White","Blue","Red","Green","Blue2","Purple"],
+  "A7-P freshwater (6 ch)":["Warm","Blue","Red","Green","Orange Light","Cool White"],
+  "A8-X (6 ch)":["White","Royal Blue","Broadband Blue","Violet Blue","Purple","Crossover UV"],
+  "A46-P freshwater (4 ch)":["White","Blue","Red","Green"]
+};
+const colorFor = n => COLORS[n] || "#8aa";
+
+// ---- state ----
+let state = { model:Object.keys(MODELS)[0], channels:[], sel:0 };
+function makeChannels(names){
+  const seed=[ {s:10,e:16,l:80},{s:8,e:18,l:70},{s:11,e:15,l:40},{s:11,e:15,l:35},
+    {s:8,e:18,l:75},{s:12,e:16,l:30},{s:12,e:15,l:25},{s:10,e:16,l:50} ];
+  return names.map((n,i)=>({name:n,color:colorFor(n),enabled:true,
+    start:seed[i%seed.length].s,end:seed[i%seed.length].e,level:seed[i%seed.length].l,
+    rampUp:2,rampDown:2}));
+}
+
+// ---- curve math (mirrors schedule.py exactly) ----
+function periodValueAt(p,h){
+  const up=p.start-p.rampUp, dn=p.end+p.rampDown;
+  if(p.start<=h && h<=p.end) return p.level;
+  if(up<=h && h<p.start && p.rampUp>0) return p.level*(h-up)/p.rampUp;
+  if(p.end<h && h<=dn && p.rampDown>0) return p.level*(dn-h)/p.rampDown;
+  return 0;
+}
+function expandWrap(p){ if(p.end>=p.start) return [p];
+  return [{...p,end:24,rampDown:0},{...p,start:0,rampUp:0}]; }
+function buildCurve(ch){
+  if(!ch.enabled) return new Array(24).fill(0);
+  const ex=expandWrap(ch);
+  const c=[]; for(let h=0;h<24;h++){ let v=0; ex.forEach(p=>v=Math.max(v,periodValueAt(p,h)));
+    c.push(Math.max(0,Math.min(100,Math.round(v)))); } return c;
+}
+// continuous value for smooth drawing
+function contValue(ch,h){ if(!ch.enabled) return 0; const ex=expandWrap(ch);
+  let v=0; ex.forEach(p=>v=Math.max(v,periodValueAt(p,h))); return Math.max(0,Math.min(100,v)); }
+
+// ---- chart ----
+const NS="http://www.w3.org/2000/svg";
+const CH={x0:44,y0:14,x1:706,y1:280}; // plot box
+const hx=h=>CH.x0+(h/24)*(CH.x1-CH.x0);
+const vy=v=>CH.y1-(v/100)*(CH.y1-CH.y0);
+let dragging=null;
+
+function drawChart(){
+  const svg=document.getElementById("chart"); svg.innerHTML="";
+  const W=720,H=320;
+  // day/night gradient defs
+  const defs=el("defs");
+  defs.appendChild(gradient("day",[[0,"#04121f"],[0.5,"#123a5c"],[1,"#04121f"]],true));
+  svg.appendChild(defs);
+  // background water column
+  svg.appendChild(rect(CH.x0,CH.y0,CH.x1-CH.x0,CH.y1-CH.y0,"url(#day)",{opacity:.5}));
+  // grid + hour axis
+  for(let h=0;h<=24;h+=2){
+    const x=hx(h);
+    svg.appendChild(line(x,CH.y0,x,CH.y1,"var(--line)",{opacity:h%6===0?.9:.4}));
+    svg.appendChild(text(x,CH.y1+16,(h<10?"0":"")+h+":00","var(--muted)",10,"middle"));
+  }
+  for(let v=0;v<=100;v+=25){
+    const y=vy(v);
+    svg.appendChild(line(CH.x0,y,CH.x1,y,"var(--line)",{opacity:.35}));
+    svg.appendChild(text(CH.x0-8,y+3,v+"","var(--muted)",10,"end"));
+  }
+  // auto on/off markers
+  const oh=+document.getElementById("openHour").value, chh=+document.getElementById("closeHour").value;
+  [["on",oh,"var(--sun)"],["off",chh,"var(--muted)"]].forEach(([lab,h,c])=>{
+    svg.appendChild(line(hx(h),CH.y0,hx(h),CH.y1,c,{dash:"3 4",opacity:.7}));
+  });
+  // moon band
+  if(document.getElementById("moonRun").checked){
+    const ms=parseHM(document.getElementById("moonStart").value),
+          me=parseHM(document.getElementById("moonEnd").value);
+    moonBand(svg,ms,me);
+  }
+  // channel curves
+  state.channels.forEach((ch,i)=>{
+    if(!ch.enabled) return;
+    let d=""; for(let h=0;h<=24;h+=0.25){ const x=hx(h),y=vy(contValue(ch,h));
+      d+=(h===0?"M":"L")+x.toFixed(1)+" "+y.toFixed(1)+" "; }
+    const sel=i===state.sel;
+    // area fill for selected
+    if(sel){ const area=d+"L"+hx(24)+" "+vy(0)+" L"+hx(0)+" "+vy(0)+" Z";
+      svg.appendChild(path(area,ch.color,{fill:ch.color,fillOpacity:.14,stroke:"none"})); }
+    svg.appendChild(path(d.trim(),ch.color,{width:sel?3:1.6,opacity:sel?1:.55,glow:sel}));
+  });
+  // draggable handles for selected channel
+  const ch=state.channels[state.sel];
+  if(ch && ch.enabled){
+    handle(svg,hx(ch.start),vy(ch.level),"start");
+    handle(svg,hx(ch.end),vy(ch.level),"end");
+    handle(svg,hx((ch.start+ch.end)/2),vy(ch.level),"level");
+  }
+  // now marker
+  const now=new Date(); const nh=now.getHours()+now.getMinutes()/60;
+  svg.appendChild(line(hx(nh),CH.y0,hx(nh),CH.y1,"var(--accent)",{opacity:.9}));
+  svg.appendChild(text(hx(nh),CH.y0-3,"now","var(--accent)",9,"middle"));
+}
+function moonBand(svg,ms,me){
+  const seg=(a,b)=>{ const x=hx(a),w=hx(b)-hx(a);
+    svg.appendChild(rect(x,CH.y0,w,CH.y1-CH.y0,"var(--moon)",{opacity:.10}));
+    svg.appendChild(line(x,CH.y0,x,CH.y1,"var(--moon)",{opacity:.5,dash:"2 4"}));
+    svg.appendChild(line(hx(b),CH.y0,hx(b),CH.y1,"var(--moon)",{opacity:.5,dash:"2 4"})); };
+  if(me>=ms) seg(ms,me); else { seg(ms,24); seg(0,me); }
+}
+function handle(svg,x,y,kind){
+  const g=el("circle",{cx:x,cy:y,r:7,fill:"var(--accent)",stroke:"#04222a","stroke-width":2,
+    cursor:"grab","data-h":kind}); g.style.filter="drop-shadow(0 0 5px var(--accent))";
+  g.addEventListener("pointerdown",e=>{dragging=kind;g.setPointerCapture(e.pointerId);e.preventDefault();});
+  svg.appendChild(g);
+}
+// svg helpers
+function el(t,a={}){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;}
+function line(x1,y1,x2,y2,s,o={}){const e=el("line",{x1,y1,x2,y2,stroke:s,"stroke-width":o.w||1});
+  if(o.opacity!=null)e.setAttribute("opacity",o.opacity);if(o.dash)e.setAttribute("stroke-dasharray",o.dash);return e;}
+function rect(x,y,w,h,f,o={}){const e=el("rect",{x,y,width:w,height:h,fill:f});
+  if(o.opacity!=null)e.setAttribute("opacity",o.opacity);return e;}
+function text(x,y,s,f,size,anchor){const e=el("text",{x,y,fill:f,"font-size":size,
+  "text-anchor":anchor||"start","font-family":"var(--mono)"});e.textContent=s;return e;}
+function path(d,stroke,o={}){const e=el("path",{d,fill:o.fill||"none",stroke:o.stroke===undefined?stroke:o.stroke,
+  "stroke-width":o.width||1.6,"stroke-linejoin":"round","stroke-linecap":"round"});
+  if(o.fillOpacity!=null)e.setAttribute("fill-opacity",o.fillOpacity);
+  if(o.opacity!=null)e.setAttribute("opacity",o.opacity);
+  if(o.glow)e.style.filter="drop-shadow(0 0 4px "+stroke+")";return e;}
+function gradient(id,stops,horizontal){const g=el("linearGradient",{id,x1:0,y1:0,x2:horizontal?1:0,y2:horizontal?0:1});
+  stops.forEach(([off,c])=>g.appendChild(el("stop",{offset:off,"stop-color":c})));return g;}
+
+// drag handling
+(function(){
+  const svg=document.getElementById("chart");
+  function toHourVal(e){const r=svg.getBoundingClientRect();
+    const px=(e.clientX-r.left)/r.width*720, py=(e.clientY-r.top)/r.height*320;
+    const h=Math.max(0,Math.min(24,(px-CH.x0)/(CH.x1-CH.x0)*24));
+    const v=Math.max(0,Math.min(100,(CH.y1-py)/(CH.y1-CH.y0)*100));
+    return {h:Math.round(h*4)/4, v:Math.round(v)};}
+  svg.addEventListener("pointermove",e=>{ if(!dragging) return;
+    const ch=state.channels[state.sel]; const {h,v}=toHourVal(e);
+    if(dragging==="start") ch.start=Math.min(h,ch.end);
+    else if(dragging==="end") ch.end=Math.max(h,ch.start);
+    else if(dragging==="level"){ ch.level=v;
+      const c=(ch.start+ch.end)/2, d=h-c; ch.start=Math.max(0,ch.start+d); ch.end=Math.min(24,ch.end+d);}
+    syncChannelInputs(); drawChart(); updateExports(); });
+  window.addEventListener("pointerup",()=>{dragging=null;});
+})();
+
+// ---- UI wiring ----
+function parseHM(s){s=(""+s).trim();if(s.includes(":")){const[a,b]=s.split(":");return (+a)+(+b)/60;}return +s||0;}
+function fmtHM(h){const t=Math.round(h*60);const hh=Math.floor(t/60)%24,mm=t%60;
+  return (hh<10?"0":"")+hh+":"+(mm<10?"0":"")+mm;}
+function toHHdotMM(s){const h=parseHM(s);const hh=Math.floor(h),mm=Math.round((h-hh)*60);
+  return (hh+mm/100).toFixed(2);}
+
+function buildModelSelect(){
+  const sel=document.getElementById("model"); sel.innerHTML="";
+  Object.keys(MODELS).forEach(k=>{const o=document.createElement("option");o.value=k;o.textContent=k;sel.appendChild(o);});
+  sel.value=state.model;
+}
+function buildTz(){const sel=document.getElementById("tz");
+  for(let z=-12;z<=14;z++){const o=document.createElement("option");o.value=z;
+    o.textContent="UTC"+(z>=0?"+":"")+z;sel.appendChild(o);}
+  sel.value=12;}
+function loadModel(){
+  state.channels=makeChannels(MODELS[state.model]); state.sel=0;
+  document.getElementById("modelTag").textContent=state.model.replace(/\(.*/,"").trim()+" · "+MODELS[state.model].length+" ch";
+  buildLegend(); selectChannel(0); drawChart(); updateExports();
+}
+function buildLegend(){
+  const L=document.getElementById("legend"); L.innerHTML="";
+  state.channels.forEach((ch,i)=>{
+    const c=document.createElement("button"); c.className="chip"+(i===state.sel?" sel":"");
+    c.setAttribute("data-on",ch.enabled?1:0);
+    c.innerHTML=`<span class="sw" style="color:${ch.color};background:${ch.color}"></span>${ch.name}`;
+    c.onclick=()=>selectChannel(i);
+    L.appendChild(c);
+  });
+}
+function selectChannel(i){ state.sel=i; const ch=state.channels[i];
+  document.getElementById("selName").textContent=ch.name;
+  document.getElementById("chEnabled").checked=ch.enabled;
+  set("chLevel",ch.level); set("chStart",ch.start); set("chEnd",ch.end);
+  set("chUp",ch.rampUp); set("chDown",ch.rampDown);
+  syncChannelInputs(); buildLegend(); drawChart();
+}
+function set(id,v){document.getElementById(id).value=v;}
+function syncChannelInputs(){
+  const ch=state.channels[state.sel];
+  document.getElementById("chLevelV").textContent=ch.level+"%";
+  document.getElementById("chStartV").textContent=fmtHM(ch.start);
+  document.getElementById("chEndV").textContent=fmtHM(ch.end);
+  document.getElementById("chUpV").textContent=ch.rampUp.toFixed(2).replace(/0$/,"")+" h";
+  document.getElementById("chDownV").textContent=ch.rampDown.toFixed(2).replace(/0$/,"")+" h";
+  set("chLevel",ch.level);set("chStart",ch.start);set("chEnd",ch.end);set("chUp",ch.rampUp);set("chDown",ch.rampDown);
+}
+function bindChannel(){
+  const m={chLevel:"level",chStart:"start",chEnd:"end",chUp:"rampUp",chDown:"rampDown"};
+  Object.entries(m).forEach(([id,key])=>{
+    document.getElementById(id).addEventListener("input",e=>{
+      const ch=state.channels[state.sel]; ch[key]=parseFloat(e.target.value);
+      if(key==="start") ch.end=Math.max(ch.end,ch.start);
+      if(key==="end") ch.start=Math.min(ch.start,ch.end);
+      syncChannelInputs(); drawChart(); updateExports();
+    });
+  });
+  document.getElementById("chEnabled").addEventListener("change",e=>{
+    state.channels[state.sel].enabled=e.target.checked; buildLegend(); drawChart(); updateExports();
+  });
+}
+
+// ---- exports ----
+function scheduleCurves(){ return state.channels.map(buildCurve); }
+function serialField(){
+  const parts=document.getElementById("serial").value.split(/[\s,]+/).filter(Boolean);
+  if(parts.length===0) return '""';
+  if(parts.length===1) return `"${parts[0]}"`;
+  return "["+parts.map(s=>`"${s}"`).join(", ")+"]";
+}
+function updateExports(){
+  const serial=serialField();
+  const curves=scheduleCurves();
+  const curveLines=curves.map((c,i)=>`    - ${JSON.stringify(c)}  # ${state.channels[i].name}`).join("\n");
+  document.getElementById("exSched").textContent=
+`action: aipai_light.set_schedule
+data:
+  serial: ${serial}
+  open_hour: ${+document.getElementById("openHour").value}
+  close_hour: ${+document.getElementById("closeHour").value}
+  curves:
+${curveLines}`;
+
+  // clock
+  const auto=document.getElementById("autoClock").checked;
+  const tz=+document.getElementById("tz").value;
+  let clock=`action: aipai_light.sync_clock
+data:
+  serial: ${serial}
+  timezone: ${tz}`;
+  if(!auto){ const dt=document.getElementById("manualDt").value.replace("T"," ");
+    if(dt) clock+=`\n  datetime: "${dt}:00"`; }
+  document.getElementById("exClock").textContent=clock;
+  document.getElementById("clockPreview").textContent=auto
+    ? "Will push the current real UTC time; device shows UTC"+(tz>=0?"+":"")+tz+"."
+    : "Will set the device's local clock to the chosen date/time at UTC"+(tz>=0?"+":"")+tz+".";
+
+  // moon
+  const mc=document.getElementById("moonColor").value.toUpperCase();
+  document.getElementById("exMoon").textContent=
+`action: aipai_light.set_moon
+data:
+  serial: ${serial}
+  enable: ${document.getElementById("moonRun").checked}
+  color: "${mc}"
+  level: ${+document.getElementById("moonLevel").value}
+  start: "${document.getElementById("moonStart").value}"
+  end: "${document.getElementById("moonEnd").value}"`;
+}
+
+// ---- misc bindings ----
+function bindGlobals(){
+  document.getElementById("model").addEventListener("change",e=>{state.model=e.target.value;loadModel();});
+  ["serial","openHour","closeHour"].forEach(id=>
+    document.getElementById(id).addEventListener("input",()=>{drawChart();updateExports();
+      document.getElementById("modelTag");}));
+  // tabs
+  document.querySelectorAll(".tabs button").forEach(b=>b.addEventListener("click",()=>{
+    document.querySelectorAll(".tabs button").forEach(x=>x.classList.remove("active"));
+    document.querySelectorAll(".tabpane").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active"); document.getElementById("tab-"+b.dataset.tab).classList.add("active");
+  }));
+  // clock
+  document.getElementById("autoClock").addEventListener("change",e=>{
+    document.getElementById("manualDtField").hidden=e.target.checked; updateExports();});
+  document.getElementById("tz").addEventListener("change",updateExports);
+  document.getElementById("manualDt").addEventListener("input",updateExports);
+  // moon
+  const mo=["moonRun","moonColor","moonLevel","moonStart","moonEnd"];
+  mo.forEach(id=>document.getElementById(id).addEventListener("input",()=>{
+    document.getElementById("moonColorV").textContent=document.getElementById("moonColor").value.toUpperCase();
+    document.getElementById("moonLevelV").textContent=document.getElementById("moonLevel").value+"%";
+    drawChart(); updateExports();}));
+  // presets
+  document.querySelectorAll("[data-profile]").forEach(b=>b.addEventListener("click",()=>applyProfile(b.dataset.profile)));
+  // copy
+  document.querySelectorAll("[data-copy]").forEach(b=>b.addEventListener("click",()=>{
+    const t=document.getElementById(b.dataset.copy).textContent;
+    navigator.clipboard.writeText(t).then(()=>toast("Copied "+b.previousElementSibling?.textContent));
+    toast("Copied");
+  }));
+}
+function applyProfile(level){
+  if(level==="flat"){ state.channels.forEach(ch=>ch.enabled=false);
+    selectChannel(state.sel); buildLegend(); drawChart(); updateExports(); return; }
+  const peak={high:90, medium:55, low:30}[level]||55;
+  const weight=name=>{ const n=name.toLowerCase();
+    if(/blue/.test(n)) return 1.0;
+    if(/uv|violet|purple/.test(n)) return 0.85;
+    if(/white|lb|cool/.test(n)) return 0.70;
+    if(/warm|orange/.test(n)) return 0.55;
+    return 0.45; };  // red / green / olive
+  state.channels.forEach(ch=>{ ch.enabled=true; ch.start=9; ch.end=17; ch.rampUp=2; ch.rampDown=2;
+    ch.level=Math.round(Math.min(100, peak*weight(ch.name))); });
+  selectChannel(state.sel); buildLegend(); drawChart(); updateExports();
+}
+
+// ---- tank groups ----
+function getGroups(){ try{ return JSON.parse(localStorage.getItem("aipai_groups")||"[]"); }catch(e){ return []; } }
+function setGroups(g){ try{ localStorage.setItem("aipai_groups",JSON.stringify(g)); }catch(e){} }
+function refreshGroupSel(){
+  const sel=document.getElementById("groupSel"), cur=sel.value;
+  sel.innerHTML='<option value="">— use serials above —</option>';
+  getGroups().forEach(g=>{ const o=document.createElement("option");
+    o.value=g.name; o.textContent=g.name+" ("+g.serials.length+")"; sel.appendChild(o); });
+  sel.value=cur;
+}
+function bindGroups(){
+  refreshGroupSel();
+  document.getElementById("groupSel").addEventListener("change",e=>{
+    const g=getGroups().find(x=>x.name===e.target.value);
+    if(g){ document.getElementById("serial").value=g.serials.join(", "); updateExports(); }
+  });
+  document.getElementById("btnSaveGroup").addEventListener("click",()=>{
+    const name=document.getElementById("groupName").value.trim(), serials=serialArray();
+    if(!name) return toast("Name the group first");
+    if(!serials.length) return toast("Add serials first");
+    const g=getGroups().filter(x=>x.name!==name); g.push({name,serials}); setGroups(g);
+    document.getElementById("groupName").value=""; refreshGroupSel();
+    document.getElementById("groupSel").value=name; toast("Saved group “"+name+"”");
+  });
+  document.getElementById("btnDelGroup").addEventListener("click",()=>{
+    const name=document.getElementById("groupSel").value; if(!name) return toast("Pick a group first");
+    setGroups(getGroups().filter(x=>x.name!==name)); refreshGroupSel(); toast("Deleted “"+name+"”");
+  });
+}
+function toast(msg){const t=document.getElementById("toast");t.textContent=msg||"Copied";
+  t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),1400);}
+
+// ---- Home Assistant apply/load ----
+function serialArray(){ return document.getElementById("serial").value.split(/[\s,]+/).filter(Boolean); }
+function haBase(){ return (document.getElementById("haUrl").value||"").replace(/\/+$/,""); }
+function haHeaders(){ return {"Authorization":"Bearer "+document.getElementById("haToken").value.trim(),
+  "Content-Type":"application/json"}; }
+function showApply(msg,bad){ const o=document.getElementById("applyOut");
+  o.textContent=msg; o.style.color=bad?"var(--sun)":"var(--muted)"; }
+function saveHaSettings(){ try{ localStorage.setItem("aipai_ha",
+  JSON.stringify({url:document.getElementById("haUrl").value, token:document.getElementById("haToken").value})); }catch(e){} }
+function loadHaSettings(){ try{ const s=JSON.parse(localStorage.getItem("aipai_ha")||"{}");
+  if(s.url) document.getElementById("haUrl").value=s.url;
+  if(s.token) document.getElementById("haToken").value=s.token; }catch(e){} }
+
+async function haCall(service,data){
+  const r=await fetch(haBase()+"/api/services/aipai_light/"+service,
+    {method:"POST",headers:haHeaders(),body:JSON.stringify(data)});
+  if(!r.ok) throw new Error("HA "+r.status+": "+(await r.text()).slice(0,140));
+}
+async function applySchedule(){
+  const s=serialArray(); if(!s.length) return showApply("Add a serial in Setup first.",true);
+  if(!document.getElementById("haToken").value.trim()) return showApply("Paste an access token first.",true);
+  showApply("Applying schedule…");
+  try{ await haCall("set_schedule",{ serial:s, open_hour:+document.getElementById("openHour").value,
+      close_hour:+document.getElementById("closeHour").value, curves:scheduleCurves(), mode:"1" });
+    showApply("Schedule applied to "+s.length+" light"+(s.length>1?"s":"")+" (scheduled mode)."); }
+  catch(e){ showApply(String(e.message||e),true); }
+}
+async function applyClock(){
+  const s=serialArray(); showApply("Syncing clock…");
+  const tz=+document.getElementById("tz").value;
+  const data={serial:s, timezone:tz};
+  if(!document.getElementById("autoClock").checked){ const dt=document.getElementById("manualDt").value.replace("T"," ");
+    if(dt) data.datetime=dt+":00"; }
+  try{ await haCall("sync_clock",data); showApply("Clock synced (UTC"+(tz>=0?"+":"")+tz+")."); }
+  catch(e){ showApply(String(e.message||e),true); }
+}
+async function applyMoon(){
+  const s=serialArray(); showApply("Applying moon…");
+  try{ await haCall("set_moon",{ serial:s, enable:document.getElementById("moonRun").checked,
+      color:document.getElementById("moonColor").value.toUpperCase(), level:+document.getElementById("moonLevel").value,
+      start:document.getElementById("moonStart").value, end:document.getElementById("moonEnd").value });
+    showApply("Moonlight settings applied."); }
+  catch(e){ showApply(String(e.message||e),true); }
+}
+function curveToPeriod(curve){
+  const def={start:10,end:16,level:0,rampUp:2,rampDown:2};
+  if(!curve||!curve.length) return def;
+  const level=Math.max(...curve); if(level<=0) return def;
+  const on=curve.map((v,i)=>v>0?i:-1).filter(i=>i>=0);
+  const plat=curve.map((v,i)=>v>=level*0.95?i:-1).filter(i=>i>=0);
+  const first=on[0], last=on[on.length-1], start=plat[0], end=plat[plat.length-1];
+  return {start, end, level, rampUp:Math.max(0,start-first), rampDown:Math.max(0,last-end)};
+}
+function decToHM(v){ if(v==null||v==="") return "00:00"; v=parseFloat(v); const h=Math.floor(v);
+  const m=Math.round((v-h)*100); return (h<10?"0":"")+h+":"+(m<10?"0":"")+m; }
+async function loadFromDevice(){
+  const s=serialArray(); if(!s.length) return showApply("Add a serial in Setup first.",true);
+  if(!document.getElementById("haToken").value.trim()) return showApply("Paste an access token first.",true);
+  showApply("Loading current schedule…");
+  try{
+    const r=await fetch(haBase()+"/api/states",{headers:haHeaders()});
+    if(!r.ok) throw new Error("HA "+r.status);
+    const states=await r.json();
+    const e=states.find(x=>x.attributes&&x.attributes.aipai_kind==="schedule"&&String(x.attributes.aipai_serial)===s[0]);
+    if(!e) return showApply("No schedule found for "+s[0]+" (is the light added in HA?).",true);
+    const a=e.attributes, roads=a.roads||8, curves=a.curves||[], labels=a.labels||[];
+    state.channels = Array.from({length:roads}, (_,i)=>{
+      const p=curveToPeriod(curves[i]); const name=labels[i]||("Ch "+(i+1));
+      return {name, color:colorFor(name), enabled:p.level>0, ...p};
+    });
+    state.sel=0;
+    if(a.open_hour!=null) document.getElementById("openHour").value=a.open_hour;
+    if(a.close_hour!=null) document.getElementById("closeHour").value=a.close_hour;
+    if(a.moon&&a.moon.color){ document.getElementById("moonColor").value=a.moon.color;
+      document.getElementById("moonRun").checked=!!a.moon.run;
+      if(a.moon.level!=null) document.getElementById("moonLevel").value=a.moon.level;
+      document.getElementById("moonStart").value=decToHM(a.moon.start);
+      document.getElementById("moonEnd").value=decToHM(a.moon.end);
+      document.getElementById("moonColorV").textContent=String(a.moon.color).toUpperCase();
+      document.getElementById("moonLevelV").textContent=(a.moon.level||0)+"%"; }
+    buildLegend(); selectChannel(0); drawChart(); updateExports();
+    showApply("Loaded current schedule from "+s[0]+" (segments approximated).");
+  }catch(e){ showApply(String(e.message||e),true); }
+}
+function bindApply(){
+  loadHaSettings();
+  ["haUrl","haToken"].forEach(id=>document.getElementById(id).addEventListener("change",saveHaSettings));
+  document.getElementById("btnLoad").onclick=loadFromDevice;
+  document.getElementById("btnApplySched").onclick=applySchedule;
+  document.getElementById("btnApplyClock").onclick=applyClock;
+  document.getElementById("btnApplyMoon").onclick=applyMoon;
+}
+
+// ---- init ----
+buildModelSelect(); buildTz(); bindChannel(); bindGlobals(); bindApply(); bindGroups(); loadModel();
+setInterval(drawChart,60000); // move the "now" line
+</script>
+</body>
+</html>

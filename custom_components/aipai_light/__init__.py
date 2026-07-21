@@ -50,9 +50,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     if device_type == DEVICE_TYPE_LIGHT:
+        from .panel import async_register_panel
         from .services import async_register_services
 
         async_register_services(hass)
+        await async_register_panel(hass)
     return True
 
 
