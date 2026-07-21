@@ -1,0 +1,193 @@
+generate_dashboard:
+  name: Generate dashboard
+  description: >-
+    Build a Lovelace dashboard containing every configured AIPAI light, using
+    their real entity IDs. Run it here, then copy the returned YAML into a
+    dashboard's Raw configuration editor. Re-run after adding a light.
+  fields:
+    style:
+      name: Style
+      description: >-
+        "core" uses stock Home Assistant cards. "mushroom" needs the Mushroom
+        and auto-entities HACS cards, and auto-populates new lights.
+      default: core
+      selector:
+        select:
+          options:
+            - core
+            - mushroom
+    tanks:
+      name: Tank grouping (optional)
+      description: 'Group lights into tanks, e.g. Display=12345678,12345678;Frag=12345678'
+      example: "Display=12345678,12345678;Frag=12345678"
+      selector:
+        text:
+    designer_url:
+      name: Designer URL
+      description: Where the schedule designer is served from.
+      default: /local/aipai/designer.html
+      selector:
+        text:
+
+sync_clock:
+  name: Sync clock
+  description: >-
+    Set an AIPAI light's clock. With no datetime, syncs to the current real
+    time (UTC). Optionally set the timezone (UTC offset) and/or a specific
+    device-local date/time.
+  fields:
+    serial:
+      name: Serial(s)
+      description: >-
+        One serial, several serials, or leave empty to target every configured
+        light. Add multiple to push the same clock to all your lights at once.
+      example: "12345678"
+      selector:
+        text:
+          multiple: true
+    datetime:
+      name: Device-local date/time
+      description: Target local time on the device, 'YYYY-MM-DD HH:MM:SS'. Omit to use now.
+      example: "2026-07-15 20:00:00"
+      selector:
+        text:
+    timezone:
+      name: Timezone (UTC offset hours)
+      example: 12
+      selector:
+        number:
+          min: -12
+          max: 14
+          step: 1
+
+set_schedule:
+  name: Set schedule
+  description: >-
+    Write per-channel 24-hour curves (0-100 per hour) to the light. Intended
+    to be fed by the visual designer's exported curves.
+  fields:
+    serial:
+      name: Serial(s)
+      description: One serial, several serials, or empty for all configured lights.
+      example: "12345678"
+      selector:
+        text:
+          multiple: true
+    curves:
+      name: Curves
+      description: List of per-channel curves, each a list of 24 integers (0-100).
+      selector:
+        object:
+    open_hour:
+      name: Auto-on hour
+      selector:
+        number:
+          min: 0
+          max: 23
+    close_hour:
+      name: Auto-off hour
+      selector:
+        number:
+          min: 0
+          max: 23
+    mode:
+      name: Control mode
+      description: Optionally switch the light — "1" scheduled (sunrise/sunset), "0" manual.
+      example: "1"
+      selector:
+        select:
+          options:
+            - "0"
+            - "1"
+
+set_channel_period:
+  name: Set channel period
+  description: >-
+    Set one channel to a level between start and end with sunrise/sunset
+    ramps, building that channel's 24-hour curve (other channels preserved).
+  fields:
+    serial:
+      name: Serial(s)
+      description: One serial, several serials, or empty for all configured lights.
+      example: "12345678"
+      selector:
+        text:
+          multiple: true
+    channel:
+      name: Channel
+      description: Channel index (0-based) or label (e.g. "White").
+      example: White
+      selector:
+        text:
+    start:
+      name: Start
+      example: "10:00"
+      selector:
+        text:
+    end:
+      name: End
+      example: "16:00"
+      selector:
+        text:
+    level:
+      name: Peak level (%)
+      selector:
+        number:
+          min: 0
+          max: 100
+    ramp_up:
+      name: Ramp up (hours)
+      selector:
+        number:
+          min: 0
+          max: 12
+          step: 0.25
+    ramp_down:
+      name: Ramp down (hours)
+      selector:
+        number:
+          min: 0
+          max: 12
+          step: 0.25
+
+set_moon:
+  name: Set moonlight
+  description: Configure the native moonlight timer (e.g. to trigger spawning).
+  fields:
+    serial:
+      name: Serial(s)
+      description: One serial, several serials, or empty for all configured lights.
+      example: "12345678"
+      selector:
+        text:
+          multiple: true
+    color:
+      name: Colour
+      example: "#00A0E9"
+      selector:
+        text:
+    level:
+      name: Level (%)
+      selector:
+        number:
+          min: 0
+          max: 100
+    start:
+      name: Start
+      example: "21:00"
+      selector:
+        text:
+    end:
+      name: End
+      example: "06:00"
+      selector:
+        text:
+    enable:
+      name: Enable
+      selector:
+        boolean:
+    preview:
+      name: Preview only
+      description: If on, sends a live preview without saving to the device.
+      selector:
+        boolean:

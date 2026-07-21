@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add AIPAI device",
+        "description": "Enter the device's serial number (from the AIPAI app's device list, e.g. 12345678) and its type. Only 'Light' is verified against real hardware; the other types are experimental and unverified. Model is optional and applies to lights only.",
+        "data": {
+          "serial": "Device serial number",
+          "device_type": "Device type",
+          "model": "Light model (optional, e.g. A8-SE8)"
+        }
+      }
+    },
+    "error": {
+      "invalid_serial": "Serial number should be digits only."
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "AIPAI device options",
+        "data": {
+          "poll_interval": "State poll interval (seconds)"
+        }
+      }
+    }
+  }
+}
