@@ -1,3 +1,52 @@
+apply_preset:
+  name: Apply preset
+  description: >-
+    Apply a named lighting preset — a look (Viewing, Feeding, Maintenance,
+    All off) or a day schedule (Daylight, Bright day, Low light), plus any you
+    have saved yourself.
+  fields:
+    serial:
+      name: Serial(s)
+      description: One serial, several serials, or empty for all configured lights.
+      example: "12345678"
+      selector:
+        text:
+          multiple: true
+    preset:
+      name: Preset
+      description: The preset name, as shown in the light's Preset dropdown.
+      example: Viewing (blue)
+      selector:
+        text:
+
+save_preset:
+  name: Save preset
+  description: >-
+    Save a light's current channel levels as a reusable preset. Stored by
+    channel name, so it applies to other models too.
+  fields:
+    serial:
+      name: Serial
+      description: The light whose current levels you want to capture.
+      example: "12345678"
+      selector:
+        text:
+    name:
+      name: Preset name
+      example: Evening blues
+      selector:
+        text:
+
+delete_preset:
+  name: Delete preset
+  description: Delete a preset you saved (built-in presets can't be removed).
+  fields:
+    name:
+      name: Preset name
+      example: Evening blues
+      selector:
+        text:
+
 generate_dashboard:
   name: Generate dashboard
   description: >-

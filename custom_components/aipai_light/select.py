@@ -21,7 +21,10 @@ async def async_setup_entry(
 ) -> None:
     hub = hass.data[DOMAIN][entry.entry_id]
     if isinstance(hub, AipaiLightHub):
-        async_add_entities([AipaiModeSelect(hub)])
+        from .preset_store import async_get_store
+
+        store = await async_get_store(hass)
+        async_add_entities([AipaiModeSelect(hub), AipaiPresetSelect(hub, store)])
     elif isinstance(hub, ExperimentalDeviceHub):
         async_add_entities(build_entities(hub, "select"))
 
@@ -53,3 +56,48 @@ class AipaiModeSelect(SelectEntity):
         value = _MODE_LABELS.get(option)
         if value is not None:
             self._hub.set_mode(value)
+
+
+class AipaiPresetSelect(SelectEntity):
+    """One-tap lighting presets (Daylight, Viewing, Feeding, Maintenance, ...)."""
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_name = "Preset"
+    _attr_icon = "mdi:palette"
+
+    def __init__(self, hub: AipaiLightHub, store) -> None:  # noqa: ANN001
+        self._hub = hub
+        self._store = store
+        self._applied: str | None = None
+        self._attr_unique_id = f"{hub.serial}_preset"
+        self._attr_device_info = hub.device_info
+        hub.register_entity(self)
+        store.add_listener(self._on_presets_changed)
+
+    def _on_presets_changed(self) -> None:
+        # A preset was saved or deleted - refresh the dropdown.
+        if self.hass is not None:
+            self.async_write_ha_state()
+
+    @property
+    def available(self) -> bool:
+        return self._hub.available
+
+    @property
+    def options(self) -> list[str]:
+        return self._store.names
+
+    @property
+    def current_option(self) -> str | None:
+        # Presets are "fire and forget" - we report the last one applied rather
+        # than trying to reverse-engineer which preset the levels match.
+        return self._applied if self._applied in self._store.names else None
+
+    async def async_select_option(self, option: str) -> None:
+        preset = self._store.get(option)
+        if preset is None:
+            return
+        self._hub.apply_preset(preset)
+        self._applied = option
+        self.async_write_ha_state()

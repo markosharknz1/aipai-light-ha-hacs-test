@@ -188,6 +188,36 @@ class AipaiLightHub:
         """Set device clock to a UTC epoch (defaults to real current time)."""
         self.client.sync_clock(epoch)
 
+    def apply_preset(self, preset: dict[str, Any]) -> bool:
+        """Apply a named preset (see presets.py) to this fixture.
+
+        A `levels` preset sets the channels now and drops the light into manual
+        mode so its stored day schedule doesn't override the look. A `schedule`
+        preset writes curves and switches to scheduled mode.
+        """
+        from .presets import build_curves, build_levels
+
+        labels = self.labels[: self.roads]
+        kind = preset.get("kind", "levels")
+
+        if kind == "schedule":
+            if not self.has_state:
+                _LOGGER.warning("preset skipped for %s: no state read yet", self.serial)
+                return False
+            curves = build_curves(preset, labels)
+            rows = [",".join(str(v) for v in c) for c in curves]
+            return self.apply_schedule(road_data=rows, mode="1")
+
+        levels = build_levels(preset, labels)
+        # Manual mode first, so the schedule doesn't fight the look. Needs a
+        # saveconfig, which the firmware always powers on - harmless here since
+        # we immediately set the levels (including all-zero for "All off").
+        if self.has_state and self.state.mode != "0":
+            self.apply_schedule(mode="0")
+        for i, pct in enumerate(levels):
+            self.set_channel(i, pct_to_cmd(pct))
+        return True
+
     def set_mode(self, mode: str) -> bool:
         """Set control mode: '0' manual, '1' scheduled (sunrise/sunset)."""
         if not self.has_state:

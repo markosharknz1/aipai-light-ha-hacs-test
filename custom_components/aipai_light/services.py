@@ -14,6 +14,7 @@ from homeassistant.helpers import entity_registry as er
 from .const import DOMAIN
 from .dashboard import build_core, build_mushroom, group_tanks
 from .hub import AipaiLightHub
+from .protocol import cmd_to_pct
 from .schedule import (
     Period,
     build_channel_curve,
@@ -30,6 +31,9 @@ SERVICE_SET_SCHEDULE = "set_schedule"
 SERVICE_SET_CHANNEL_PERIOD = "set_channel_period"
 SERVICE_SET_MOON = "set_moon"
 SERVICE_GENERATE_DASHBOARD = "generate_dashboard"
+SERVICE_APPLY_PRESET = "apply_preset"
+SERVICE_SAVE_PRESET = "save_preset"
+SERVICE_DELETE_PRESET = "delete_preset"
 
 _SERIAL = vol.Optional("serial")
 # A serial may be one value, a list of values, or omitted (= all lights).
@@ -64,6 +68,18 @@ _GENERATE_DASHBOARD_SCHEMA = vol.Schema({
     vol.Optional("tanks"): cv.string,          # 'Display=123,456;Frag=789'
     vol.Optional("designer_url", default="/aipai_light/designer.html"): cv.string,
 })
+
+_APPLY_PRESET_SCHEMA = vol.Schema({
+    _SERIAL: _SERIAL_VALUE,
+    vol.Required("preset"): cv.string,
+})
+
+_SAVE_PRESET_SCHEMA = vol.Schema({
+    vol.Required("serial"): cv.string,     # which light's current look to capture
+    vol.Required("name"): cv.string,
+})
+
+_DELETE_PRESET_SCHEMA = vol.Schema({vol.Required("name"): cv.string})
 
 _SET_MOON_SCHEMA = vol.Schema({
     _SERIAL: _SERIAL_VALUE,
@@ -204,6 +220,44 @@ def async_register_services(hass: HomeAssistant) -> None:
         return {"yaml": text, "lights": len(lights),
                 "serials": [str(l["serial"]) for l in lights]}
 
+    async def handle_apply_preset(call: ServiceCall) -> None:
+        from .preset_store import async_get_store
+
+        store = await async_get_store(hass)
+        preset = store.get(call.data["preset"])
+        if preset is None:
+            _LOGGER.warning("Unknown preset %r (have: %s)",
+                            call.data["preset"], ", ".join(store.names))
+            return
+        for hub in _light_hubs(hass, call.data.get("serial")):
+            hub.apply_preset(preset)
+
+    async def handle_save_preset(call: ServiceCall) -> None:
+        """Capture a light's current channel levels as a reusable preset."""
+        from .preset_store import async_get_store
+        from .presets import levels_from_current
+
+        hubs = _light_hubs(hass, call.data["serial"])
+        if not hubs:
+            return
+        hub = hubs[0]
+        levels_pct = [cmd_to_pct(v) for v in hub.channels[: hub.roads]]
+        body = {"kind": "levels",
+                "levels": levels_from_current(levels_pct, hub.labels[: hub.roads])}
+        store = await async_get_store(hass)
+        await store.async_save_preset(call.data["name"], body)
+        _LOGGER.info("Saved preset %r from light %s", call.data["name"], hub.serial)
+
+    async def handle_delete_preset(call: ServiceCall) -> None:
+        from .preset_store import async_get_store
+
+        store = await async_get_store(hass)
+        if not await store.async_delete_preset(call.data["name"]):
+            _LOGGER.warning("No custom preset named %r to delete", call.data["name"])
+
+    hass.services.async_register(DOMAIN, SERVICE_APPLY_PRESET, handle_apply_preset, _APPLY_PRESET_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_SAVE_PRESET, handle_save_preset, _SAVE_PRESET_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_DELETE_PRESET, handle_delete_preset, _DELETE_PRESET_SCHEMA)
     hass.services.async_register(
         DOMAIN, SERVICE_GENERATE_DASHBOARD, handle_generate_dashboard,
         _GENERATE_DASHBOARD_SCHEMA, supports_response=SupportsResponse.ONLY,
