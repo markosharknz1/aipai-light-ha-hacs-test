@@ -46,7 +46,11 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         # Path already registered (e.g. a previous reload) - fine.
         pass
 
-    # Add it to the sidebar.
+    # Best-effort sidebar entry. Home Assistant removed the `panel_iframe`
+    # integration (deprecated 2024.4, deleted since), so the built-in "iframe"
+    # panel type is not available on newer cores and this will simply not take.
+    # The designer is still reachable at PANEL_URL and via the dashboard's
+    # Designer view, which is the supported route - see docs/install-web-files.md.
     try:
         from homeassistant.components import frontend
 
@@ -59,9 +63,16 @@ async def async_register_panel(hass: HomeAssistant) -> None:
             {"url": PANEL_URL},
             require_admin=False,
         )
+        _LOGGER.debug("Registered '%s' sidebar panel", PANEL_TITLE)
     except ValueError:
         pass  # already in the sidebar
     except Exception as err:  # noqa: BLE001
-        _LOGGER.debug("Could not register sidebar panel: %s", err)
+        _LOGGER.info(
+            "No sidebar entry for the designer on this Home Assistant version "
+            "(%s). It is served at %s - add it as a Webpage dashboard, or use "
+            "the Designer view in the generated dashboard.",
+            err,
+            PANEL_URL,
+        )
 
     hass.data[_REGISTERED_KEY] = True
