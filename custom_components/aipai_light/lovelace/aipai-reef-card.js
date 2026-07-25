@@ -111,15 +111,19 @@ class AipaiReefCard extends HTMLElement {
     this._hass = null;
     this._config = {};
     this._ui = {
-      sheet: null,          // "sched" | "moon" | "share" | "save" | null
+      sheet: null,          // "sched" | "moon" | "share" | "save" | "preset" | null
       sel: 0,               // selected time point
       focusCh: null,
       dragging: false,      // suppress re-render mid-drag
       shareText: "",
       shareMsg: "",
-      unsaved: {},          // serial -> bool, from the unsaved_changes service
+      editing: false,       // has THIS session pushed a live preview? (drives the banner)
     };
     this._draft = null;     // {points, moon} being edited, else null = live
+    // Snapshot of the schedule as it was when this editing session started, so
+    // Discard reverts to *that* - never a persisted baseline that could be stale
+    // (a stale baseline once wrote all-channels-10% back to a healthy tank).
+    this._session = null;
     this._built = false;
   }
 
@@ -137,7 +141,6 @@ class AipaiReefCard extends HTMLElement {
     this._hass = hass;
     if (this._ui.dragging) return;   // never yank the DOM out mid-gesture
     this._render();
-    this._refreshUnsaved();
   }
 
   // -- reading HA state --------------------------------------------------
@@ -214,26 +217,6 @@ class AipaiReefCard extends HTMLElement {
 
   _serials(lights) { return lights.map((l) => l.serial); }
 
-  _anyUnsaved() {
-    return Object.values(this._ui.unsaved).some(Boolean);
-  }
-
-  async _refreshUnsaved() {
-    if (!this._hass) return;
-    try {
-      const res = await this._hass.callWS({
-        type: "call_service", domain: "aipai_light", service: "unsaved_changes",
-        service_data: {}, return_response: true,
-      });
-      const lights = (res && res.response && res.response.lights) || [];
-      const map = {};
-      lights.forEach((l) => { map[String(l.serial)] = !!l.unsaved; });
-      const changed = JSON.stringify(map) !== JSON.stringify(this._ui.unsaved);
-      this._ui.unsaved = map;
-      if (changed && !this._ui.dragging) this._render();
-    } catch (e) { /* service may not be ready yet */ }
-  }
-
   // -- calling services --------------------------------------------------
 
   _call(service, data) {
@@ -256,10 +239,26 @@ class AipaiReefCard extends HTMLElement {
   _previewDraft() {
     if (!this._draft) return;
     const lights = this._lights();
+    this._ui.editing = true;          // this session has pushed a live change
     this._call("preview_schedule", {
       serial: this._serials(lights),
       points: this._pointsPayload(this._draft.points),
-    }).then(() => this._refreshUnsaved());
+    });
+  }
+
+  // Revert to the schedule as it was when this session began - captured in the
+  // card, never a persisted baseline that might be stale.
+  _restoreSession() {
+    const lights = this._lights();
+    if (this._session && this._session.points && this._session.points.length) {
+      this._call("preview_schedule", {
+        serial: this._serials(lights),
+        points: this._pointsPayload(this._session.points),
+      });
+    }
+    this._ui.editing = false;
+    this._session = null;
+    this._draft = null;
   }
 
   // -- geometry ----------------------------------------------------------
@@ -344,7 +343,7 @@ class AipaiReefCard extends HTMLElement {
           <span class="act" data-act="save">💾 Save preset</span>
         </div>
         ${this._sheet(points, labels, sel, moon, slots)}
-        ${this._anyUnsaved() && !this._draft ? this._unsavedBar() : ""}
+        ${this._ui.editing && !this._ui.sheet ? this._unsavedBar() : ""}
         <div class="chart${this._ui.sheet === "sched" ? " editing" : ""}">
           ${this._svg(points, labels, moon, this._ui.sheet === "sched", sel, this._ui.focusCh)}
         </div>
@@ -442,7 +441,12 @@ class AipaiReefCard extends HTMLElement {
     }
     if (s === "save") {
       const slots2 = this._slots();
-      return `<div class="sheet"><div class="q">Save the tank's current look to which slot?</div>
+      return `<div class="sheet"><div class="q">Save the tank's current look</div>
+        <div class="row wrap" style="padding-bottom:8px">
+          <span class="lbl">Name</span>
+          <input type="text" class="nameit" data-savename value="My look" placeholder="Preset name">
+        </div>
+        <div class="lbl" style="padding-bottom:6px">Into which slot?</div>
         <div class="row wrap">
           ${slots2.map((n, i) => `<span class="chip mini" data-saveslot="${i}">${i + 1} · ${n ? "replace “" + this._esc(n) + "”" : "empty"}</span>`).join("")}
           <span class="chip mini" data-saveslot="cancel">Cancel</span></div></div>`;
@@ -530,10 +534,19 @@ class AipaiReefCard extends HTMLElement {
   _ensureDraft() {
     if (this._draft) return;
     const lights = this._lights();
+    const points = this._points(lights).map((p) => ({ h: p.h, ch: [...p.ch] }));
     this._draft = {
-      points: this._points(lights).map((p) => ({ h: p.h, ch: [...p.ch] })),
+      points,
       moon: { ...((lights[0] && lights[0].moon) || {}) },
     };
+    // Remember where the tank was before this session's edits, so Discard/Cancel
+    // can put it back exactly - no persisted baseline involved.
+    if (!this._session) {
+      this._session = {
+        points: points.map((p) => ({ h: p.h, ch: [...p.ch] })),
+        moon: { ...((lights[0] && lights[0].moon) || {}) },
+      };
+    }
   }
 
   _onAct(act) {
@@ -688,10 +701,10 @@ class AipaiReefCard extends HTMLElement {
   }
 
   _onSchedClose(which) {
-    if (which === "cancel" && this._draft) {
-      // discard the draft's edits by reverting the lights to their saved copy
-      this._call("discard_changes", { serial: this._serials(this._lights()) })
-        .then(() => this._refreshUnsaved());
+    if (which === "cancel") {
+      // Revert this session's edits to where the tank started - never a
+      // persisted baseline. If nothing was previewed, this is a no-op.
+      this._restoreSession();
     }
     this._draft = null; this._ui.sheet = null; this._render();
   }
@@ -710,8 +723,9 @@ class AipaiReefCard extends HTMLElement {
         color: m.color || "#00A0E9", level: clamp100(m.level),
         start: this._moonStr(m.start), end: this._moonStr(m.end),
         enable: !!(m.run || m.enabled),
-      }).then(() => this._refreshUnsaved());
+      });
     }
+    // Moon is its own device timer; closing the sheet just drops the draft.
     this._draft = null; this._ui.sheet = null; this._render();
   }
 
@@ -729,9 +743,17 @@ class AipaiReefCard extends HTMLElement {
   }
 
   _onCommit(which) {
-    const serials = this._serials(this._lights());
-    if (which === "save") this._call("save_settings", { serial: serials }).then(() => this._refreshUnsaved());
-    else this._call("discard_changes", { serial: serials }).then(() => this._refreshUnsaved());
+    if (which === "save") {
+      // The current live state is what we want; just persist it as the baseline
+      // and end the session. The lights already show it.
+      this._call("save_settings", { serial: this._serials(this._lights()) });
+      this._ui.editing = false;
+      this._session = null;
+    } else {
+      // Discard = put the tank back to where this session started.
+      this._restoreSession();
+    }
+    this._render();
   }
 
   _onSlot(i) {
@@ -749,8 +771,7 @@ class AipaiReefCard extends HTMLElement {
     const i = this._ui.presetSlot;
     const labels = this._labels(this._lights());
     if (which === "apply") {
-      this._call("apply_slot", { serial: this._serials(this._lights()), slot: i + 1 })
-        .then(() => this._refreshUnsaved());
+      this._call("apply_slot", { serial: this._serials(this._lights()), slot: i + 1 });
       this._ui.sheet = null;
     } else if (which === "edit") {
       this._ui.presetEdit = true;
@@ -809,8 +830,11 @@ class AipaiReefCard extends HTMLElement {
   _onSaveSlot(v) {
     if (v !== "cancel") {
       const serials = this._serials(this._lights());
-      const name = window.prompt("Name this preset", "My look");
-      if (name !== null) this._call("save_slot", { serial: serials[0], slot: +v + 1, name });
+      // Read the name from the sheet's own input. window.prompt() is blocked in
+      // the HA frontend, which silently ate the save before.
+      const input = this.shadowRoot.querySelector("[data-savename]");
+      const name = ((input && input.value) || "").trim() || `Preset ${+v + 1}`;
+      this._call("save_slot", { serial: serials[0], slot: +v + 1, name });
     }
     this._ui.sheet = null; this._render();
   }
@@ -848,6 +872,14 @@ class AipaiReefCard extends HTMLElement {
     if (!doc || doc.kind !== CFG_KIND) { this._ui.shareMsg = "⚠ Not an AIPAI light config"; this._render(); return; }
     if (!(doc.version <= CFG_VERSION)) { this._ui.shareMsg = "⚠ Config is newer than this card understands"; this._render(); return; }
     if (!Array.isArray(doc.points) || !doc.points.length) { this._ui.shareMsg = "⚠ No time points in that config"; this._render(); return; }
+    // Snapshot where the tank is now, so Discard can undo the import.
+    if (!this._session) {
+      const lights = this._lights();
+      this._session = {
+        points: this._points(lights).map((p) => ({ h: p.h, ch: [...p.ch] })),
+        moon: { ...((lights[0] && lights[0].moon) || {}) },
+      };
+    }
     // Hand the raw config to the backend, which does the authoritative,
     // label-keyed import and reports channel mismatches.
     this._callResp("import_config", {
@@ -858,9 +890,11 @@ class AipaiReefCard extends HTMLElement {
       this._ui.shareMsg = resp.ok
         ? "Imported" + (warns.length ? " — " + warns[0] : "")
         : "⚠ " + ((resp.lights && resp.lights[0] && resp.lights[0].error) || "Import failed");
+      // An import is a live change to the tank - treat it like a preview session
+      // so Save/Discard can keep or revert it.
+      if (resp.ok) this._ui.editing = true;
       this._draft = null;
       this._render();
-      this._refreshUnsaved();
     }).catch(() => { this._ui.shareMsg = "⚠ Import failed"; this._render(); });
   }
 
@@ -924,6 +958,9 @@ class AipaiReefCard extends HTMLElement {
       .ch .kn { position: absolute; top: 50%; width: 13px; height: 13px; border-radius: 50%;
         transform: translate(-50%, -50%); box-shadow: 0 1px 3px rgba(0,0,0,.35); }
       .ch .vv { font-family: monospace; font-size: .72rem; text-align: right; color: var(--secondary-text-color); }
+      .nameit { flex: 1; min-width: 140px; font-size: .85rem; padding: 6px 9px;
+        border-radius: 8px; border: 1px solid var(--divider-color);
+        background: var(--card-background-color); color: var(--primary-text-color); }
       .sharebox { width: 100%; min-height: 110px; font-family: monospace; font-size: .72rem;
         border: 1px solid var(--divider-color); border-radius: 8px;
         background: var(--card-background-color); color: var(--primary-text-color);
