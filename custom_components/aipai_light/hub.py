@@ -141,6 +141,7 @@ class AipaiLightHub:
 
     def set_channel(self, index: int, value_cmd: int) -> None:
         value_cmd = max(0, min(1023, int(value_cmd)))
+        _LOGGER.debug("WRITE %s set_channel ch%d = %d", self.serial, index, value_cmd)
         self.channels[index] = value_cmd
         if value_cmd > 0:
             self._restore[index] = value_cmd
@@ -148,6 +149,7 @@ class AipaiLightHub:
         self._notify()
 
     def turn_all_off(self) -> None:
+        _LOGGER.debug("WRITE %s turn_all_off", self.serial)
         for i in range(self.roads):
             if self.channels[i] > 0:
                 self._restore[i] = self.channels[i]
@@ -209,6 +211,10 @@ class AipaiLightHub:
             return self.apply_schedule(road_data=rows, mode="1")
 
         levels = build_levels(preset, labels)
+        _LOGGER.debug(
+            "WRITE %s apply_preset (levels) -> MANUAL mode, levels=%s",
+            self.serial, levels,
+        )
         # Manual mode first, so the schedule doesn't fight the look. Needs a
         # saveconfig, which the firmware always powers on - harmless here since
         # we immediately set the levels (including all-zero for "All off").
@@ -224,6 +230,7 @@ class AipaiLightHub:
             _LOGGER.warning("set_mode skipped for %s: no state read yet", self.serial)
             return False
         self.state.mode = "1" if str(mode) == "1" else "0"
+        _LOGGER.debug("WRITE %s set_mode -> %s", self.serial, self.state.mode)
         self.client.save_config(build_saveconfig(self.state))
         self._notify()
         return True
@@ -266,6 +273,10 @@ class AipaiLightHub:
             self.state.close_hour = int(close_hour)
         if mode is not None:
             self.state.mode = "1" if str(mode) == "1" else "0"
+        _LOGGER.debug(
+            "WRITE %s apply_schedule mode=%s curves=%s (saveconfig forces power on)",
+            self.serial, self.state.mode, "yes" if road_data is not None else "unchanged",
+        )
         self.client.save_config(build_saveconfig(self.state))
         return True
 
@@ -297,6 +308,8 @@ class AipaiLightHub:
         if not self.has_state:
             _LOGGER.warning("apply_points skipped for %s: no state read yet", self.serial)
             return False
+        _LOGGER.debug("WRITE %s apply_points (preview) %d points -> AUTO mode",
+                      self.serial, len(points))
         curves = build_curves_from_points(points, self.state.roads_real)
         rows = [",".join(str(v) for v in c) for c in curves]
         return self.apply_schedule(road_data=rows, mode="1")
@@ -310,6 +323,8 @@ class AipaiLightHub:
             _LOGGER.warning("restore skipped for %s: no state read yet", self.serial)
             return False
         norm = normalise_snapshot(snapshot)
+        _LOGGER.debug("WRITE %s restore_snapshot (discard) -> mode=%s",
+                      self.serial, norm["mode"] or "unchanged")
         rows = [",".join(str(v) for v in row) for row in norm["road_data"]]
         ok = self.apply_schedule(
             road_data=rows or None, mode=norm["mode"] or None
@@ -344,6 +359,8 @@ class AipaiLightHub:
         """
         color = "0x" + color_hex.lstrip("#").upper()
         level_255 = round(max(0, min(100, level_pct)) * 255 / 100)
+        _LOGGER.debug("WRITE %s set_moon %s-%s level=%d enable=%s",
+                      self.serial, start_hhmm, end_hhmm, level_pct, enable)
         self.client.set_moon(color, level_255, start_hhmm, end_hhmm, enable, save)
         self.moon = {
             "color": color_hex, "level": level_pct,
