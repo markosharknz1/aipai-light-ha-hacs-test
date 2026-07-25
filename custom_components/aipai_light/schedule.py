@@ -96,6 +96,59 @@ def build_schedule(channel_periods: list[list[Period]], roads: int) -> list[list
     return out
 
 
+def build_curve_from_points(points: list[dict], channel: int) -> list[int]:
+    """Build one channel's 24 hourly points from time points.
+
+    A time point is ``{"hour": 7, "levels": [..one per channel..]}``. The light
+    is dark before the first point and after the last, and fades linearly
+    between them - so a 0% point at 07:00 next to a 100% point at 09:00 *is* a
+    two-hour sunrise. There is no separate ramp concept.
+
+    Points are keyed by whole hours because that is all the device can store.
+    """
+    pts = sorted(
+        (p for p in points if _levels_of(p, channel) is not None),
+        key=lambda p: _safe_int(p.get("hour")),
+    )
+    if not pts:
+        return [0] * POINTS
+    first, last = _safe_int(pts[0]["hour"]), _safe_int(pts[-1]["hour"])
+
+    curve: list[int] = []
+    for h in range(POINTS):
+        if h < first or h > last:
+            curve.append(0)
+            continue
+        value = 0.0
+        for a, b in zip(pts, pts[1:]):
+            ah, bh = _safe_int(a["hour"]), _safe_int(b["hour"])
+            if ah <= h <= bh:
+                av = _levels_of(a, channel)
+                bv = _levels_of(b, channel)
+                # Two points on the same hour shouldn't happen (the UI prevents
+                # it), but take the brighter rather than dividing by zero.
+                value = max(av, bv) if bh == ah else av + (bv - av) * (h - ah) / (bh - ah)
+                break
+        else:
+            # Single point, or h exactly on the last one.
+            value = _levels_of(pts[-1], channel)
+        curve.append(_clamp_level(round(value)))
+    return curve
+
+
+def build_curves_from_points(points: list[dict], roads: int) -> list[list[int]]:
+    """Curves for every channel, in firmware road order."""
+    return [build_curve_from_points(points, i) for i in range(roads)]
+
+
+def _levels_of(point: dict, channel: int) -> float | None:
+    """This point's level for `channel`, or None if it doesn't cover it."""
+    levels = point.get("levels")
+    if not isinstance(levels, (list, tuple)) or channel >= len(levels):
+        return None
+    return float(_clamp_level(_safe_int(levels[channel])))
+
+
 def validate_curve(curve: list) -> list[int]:
     """Coerce a raw curve (e.g. from drag-editing) to 24 ints in 0-100."""
     values = [_clamp_level(_safe_int(v)) for v in curve]

@@ -240,3 +240,170 @@ set_moon:
       description: If on, sends a live preview without saving to the device.
       selector:
         boolean:
+
+preview_schedule:
+  name: Preview schedule
+  description: >-
+    Write a time-point schedule to the light immediately so it can be judged in
+    the water. Not permanent until Save settings is called; Discard changes
+    rolls back to the last saved copy.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+    points:
+      name: Time points
+      description: >-
+        A list of {hour, levels} - the hour (0-23) and one level (0-100) per
+        channel at that hour. The light fades between consecutive points and is
+        dark outside the first and last, so a 0% point at 07:00 next to a 100%
+        point at 09:00 is a two-hour sunrise.
+      example: >-
+        [{"hour": 7, "levels": [0,0,0,0,0,0,0,0]},
+         {"hour": 9, "levels": [100,40,20,20,40,50,50,80]},
+         {"hour": 17, "levels": [20,100,20,20,100,80,80,10]},
+         {"hour": 19, "levels": [0,0,0,0,0,0,0,0]}]
+      selector:
+        object:
+
+save_settings:
+  name: Save settings
+  description: >-
+    Commit what the light is running now as its saved configuration. Discard
+    changes will roll back to this point.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+
+discard_changes:
+  name: Discard changes
+  description: >-
+    Write the last saved configuration back to the light, undoing any preview.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+
+unsaved_changes:
+  name: Unsaved changes
+  description: >-
+    Report which lights are running settings that differ from their last saved
+    copy. Returns {lights: [{serial, unsaved, saved_at, known}], any_unsaved}.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+
+save_slot:
+  name: Save preset slot
+  description: >-
+    Capture a light's current channel levels into one of the three preset
+    slots. Slots start empty - there are no built-in presets.
+  fields:
+    serial:
+      name: Serial
+      description: Which light's current look to capture.
+      example: "12345678"
+      required: true
+      selector:
+        text:
+    slot:
+      name: Slot
+      selector:
+        number:
+          min: 1
+          max: 3
+    name:
+      name: Name
+      example: "Evening blues"
+      selector:
+        text:
+
+apply_slot:
+  name: Apply preset slot
+  description: Apply a saved preset slot to one, many, or all lights.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+    slot:
+      name: Slot
+      selector:
+        number:
+          min: 1
+          max: 3
+
+clear_slot:
+  name: Clear preset slot
+  description: Empty a preset slot.
+  fields:
+    slot:
+      name: Slot
+      selector:
+        number:
+          min: 1
+          max: 3
+
+export_config:
+  name: Export config
+  description: >-
+    Produce a portable, shareable copy of a light's schedule and preset slots.
+    Channels are keyed by name, so the result can be imported onto a fixture
+    with a different channel count.
+  fields:
+    serial:
+      name: Serial
+      example: "12345678"
+      required: true
+      selector:
+        text:
+    name:
+      name: Config name
+      description: Optional label stored inside the exported config.
+      example: "Mixed reef - 60cm"
+      selector:
+        text:
+    include_slots:
+      name: Include preset slots
+      selector:
+        boolean:
+
+import_config:
+  name: Import config
+  description: >-
+    Read a shared config and preview it on the light. Reports any channels your
+    fixture doesn't have. Like any preview, it isn't permanent until Save
+    settings is called.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+    config:
+      name: Config
+      description: The exported config, as JSON text or an object.
+      selector:
+        object:
+    apply:
+      name: Apply
+      description: Turn off to validate the config without changing the lights.
+      selector:
+        boolean:

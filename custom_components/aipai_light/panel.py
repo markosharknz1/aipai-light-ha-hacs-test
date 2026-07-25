@@ -20,7 +20,51 @@ PANEL_PATH = "aipai-designer"
 PANEL_TITLE = "Reef Designer"
 PANEL_ICON = "mdi:jellyfish"
 
+# The native Lovelace card. Served from the integration and injected on every
+# dashboard load, so `type: custom:aipai-reef-card` works with no manual
+# resource setup - the point of bundling it with the integration.
+CARD_URL = "/aipai_light/aipai-reef-card.js"
+CARD_VERSION = "0.5.0"   # bump to bust the browser cache when the card changes
+
 _REGISTERED_KEY = "aipai_light_panel_registered"
+_CARD_REGISTERED_KEY = "aipai_light_card_registered"
+
+
+async def async_register_card(hass: HomeAssistant) -> None:
+    """Serve the native card and add it to every dashboard (idempotent)."""
+    if hass.data.get(_CARD_REGISTERED_KEY):
+        return
+
+    source = Path(__file__).parent / "lovelace" / "aipai-reef-card.js"
+    if not source.is_file():
+        _LOGGER.warning("Bundled card missing at %s; skipping", source)
+        return
+
+    try:
+        from homeassistant.components.http import StaticPathConfig
+
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(CARD_URL, str(source), True)]
+        )
+    except ImportError:  # Home Assistant < 2024.7
+        hass.http.register_static_path(CARD_URL, str(source), True)
+    except RuntimeError:
+        pass  # already registered (reload)
+
+    # add_extra_js_url injects the module on every dashboard, so users don't
+    # have to add a Lovelace resource by hand (which also fails in YAML mode).
+    try:
+        from homeassistant.components import frontend
+
+        frontend.add_extra_js_url(hass, f"{CARD_URL}?v={CARD_VERSION}")
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.info(
+            "Could not auto-add the AIPAI card resource (%s). Add it manually: "
+            "Settings > Dashboards > Resources > %s (JavaScript module).",
+            err, CARD_URL,
+        )
+
+    hass.data[_CARD_REGISTERED_KEY] = True
 
 
 async def async_register_panel(hass: HomeAssistant) -> None:

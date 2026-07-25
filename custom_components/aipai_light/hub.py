@@ -269,6 +269,64 @@ class AipaiLightHub:
         self.client.save_config(build_saveconfig(self.state))
         return True
 
+    # -- preview / save / discard -----------------------------------------
+
+    def capture_snapshot(self) -> dict[str, Any] | None:
+        """The light's current *settings* - the thing Save commits.
+
+        Deliberately excludes live state (channel values, temperature): those
+        change constantly and must never register as an unsaved change.
+        """
+        if not self.has_state:
+            return None
+        return {
+            "road_data": list(self.state.road_data),
+            "mode": self.state.mode,
+            "moon": dict(self.moon),
+        }
+
+    def apply_points(self, points: list[dict]) -> bool:
+        """Preview a time-point schedule on the fixture straight away.
+
+        `points` is [{"hour": 7, "levels": [..per channel..]}, ...]. Writing is
+        immediate by design - the whole reason to preview is to judge it in the
+        water. Roll-back safety comes from the saved baseline in draft_store.
+        """
+        from .schedule import build_curves_from_points
+
+        if not self.has_state:
+            _LOGGER.warning("apply_points skipped for %s: no state read yet", self.serial)
+            return False
+        curves = build_curves_from_points(points, self.state.roads_real)
+        rows = [",".join(str(v) for v in c) for c in curves]
+        return self.apply_schedule(road_data=rows, mode="1")
+
+    def restore_snapshot(self, snapshot: dict[str, Any]) -> bool:
+        """Write a previously saved configuration back to the light (Discard)."""
+        from .draft import normalise_snapshot
+        from .schedule import hhmm_dotted
+
+        if not self.has_state:
+            _LOGGER.warning("restore skipped for %s: no state read yet", self.serial)
+            return False
+        norm = normalise_snapshot(snapshot)
+        rows = [",".join(str(v) for v in row) for row in norm["road_data"]]
+        ok = self.apply_schedule(
+            road_data=rows or None, mode=norm["mode"] or None
+        )
+        moon = norm.get("moon") or {}
+        if moon and "start" in moon and "end" in moon:
+            # Already literal HH.MM in the snapshot; hhmm_dotted is a no-op on
+            # floats but keeps the one true conversion point in schedule.py.
+            self.set_moon(
+                color_hex=moon.get("color", "00A0E9"),
+                level_pct=int(moon.get("level", 0)),
+                start_hhmm=hhmm_dotted(moon["start"]),
+                end_hhmm=hhmm_dotted(moon["end"]),
+                enable=bool(moon.get("run", False)),
+            )
+        return ok
+
     def set_moon(
         self,
         color_hex: str,
@@ -280,7 +338,9 @@ class AipaiLightHub:
     ) -> None:
         """Configure the native moonlight timer (spawning trigger).
 
-        color_hex like '#00A0E9'; level_pct 0-100; start/end as decimal hours.
+        color_hex like '#00A0E9'; level_pct 0-100; start/end as literal HH.MM
+        (6.30 == 06:30), i.e. the output of schedule.hhmm_dotted - NOT decimal
+        hours. Passing 6.5 here would set 06:50 on the device.
         """
         color = "0x" + color_hex.lstrip("#").upper()
         level_255 = round(max(0, min(100, level_pct)) * 255 / 100)

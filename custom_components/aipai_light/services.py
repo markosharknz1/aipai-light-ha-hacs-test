@@ -34,6 +34,15 @@ SERVICE_GENERATE_DASHBOARD = "generate_dashboard"
 SERVICE_APPLY_PRESET = "apply_preset"
 SERVICE_SAVE_PRESET = "save_preset"
 SERVICE_DELETE_PRESET = "delete_preset"
+SERVICE_PREVIEW_SCHEDULE = "preview_schedule"
+SERVICE_SAVE_SETTINGS = "save_settings"
+SERVICE_DISCARD_CHANGES = "discard_changes"
+SERVICE_UNSAVED_CHANGES = "unsaved_changes"
+SERVICE_SAVE_SLOT = "save_slot"
+SERVICE_APPLY_SLOT = "apply_slot"
+SERVICE_CLEAR_SLOT = "clear_slot"
+SERVICE_EXPORT_CONFIG = "export_config"
+SERVICE_IMPORT_CONFIG = "import_config"
 
 _SERIAL = vol.Optional("serial")
 # A serial may be one value, a list of values, or omitted (= all lights).
@@ -89,6 +98,43 @@ _SET_MOON_SCHEMA = vol.Schema({
     vol.Required("end"): cv.string,
     vol.Optional("enable", default=True): cv.boolean,
     vol.Optional("preview", default=False): cv.boolean,
+})
+
+
+# A time point: an hour, plus a level for every channel at that hour.
+_POINT_SCHEMA = vol.Schema({
+    vol.Required("hour"): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
+    vol.Required("levels"): [vol.All(vol.Coerce(int), vol.Range(min=0, max=100))],
+})
+
+_PREVIEW_SCHEDULE_SCHEMA = vol.Schema({
+    _SERIAL: _SERIAL_VALUE,
+    vol.Required("points"): vol.All([_POINT_SCHEMA], vol.Length(min=1)),
+})
+
+_COMMIT_SCHEMA = vol.Schema({_SERIAL: _SERIAL_VALUE})
+
+_SLOT = vol.All(vol.Coerce(int), vol.Range(min=1, max=3))   # 1-based for humans
+
+_SAVE_SLOT_SCHEMA = vol.Schema({
+    vol.Required("serial"): cv.string,        # whose current look to capture
+    vol.Required("slot"): _SLOT,
+    vol.Optional("name"): cv.string,
+})
+
+_APPLY_SLOT_SCHEMA = vol.Schema({_SERIAL: _SERIAL_VALUE, vol.Required("slot"): _SLOT})
+_CLEAR_SLOT_SCHEMA = vol.Schema({vol.Required("slot"): _SLOT})
+
+_EXPORT_SCHEMA = vol.Schema({
+    vol.Required("serial"): cv.string,
+    vol.Optional("name"): cv.string,
+    vol.Optional("include_slots", default=True): cv.boolean,
+})
+
+_IMPORT_SCHEMA = vol.Schema({
+    _SERIAL: _SERIAL_VALUE,
+    vol.Required("config"): vol.Any(cv.string, dict),
+    vol.Optional("apply", default=True): cv.boolean,   # off = validate only
 })
 
 
@@ -254,6 +300,195 @@ def async_register_services(hass: HomeAssistant) -> None:
         store = await async_get_store(hass)
         if not await store.async_delete_preset(call.data["name"]):
             _LOGGER.warning("No custom preset named %r to delete", call.data["name"])
+
+    # -- preview / save / discard ----------------------------------------
+    # Previews go to the fixture immediately so they can be judged in the
+    # water; the roll-back baseline lives in draft_store.
+
+    async def handle_preview_schedule(call: ServiceCall) -> None:
+        from .draft_store import async_get_draft_store
+
+        store = await async_get_draft_store(hass)
+        points = call.data["points"]
+        for hub in _light_hubs(hass, call.data.get("serial")):
+            # Capture a baseline the first time we touch a light, otherwise
+            # this preview becomes its own "saved" state and Discard is a no-op.
+            if store.saved(hub.serial) is None:
+                snap = hub.capture_snapshot()
+                if snap is not None:
+                    await store.async_commit(hub.serial, snap)
+            hub.apply_points(points)
+
+    async def handle_save_settings(call: ServiceCall) -> None:
+        from .draft_store import async_get_draft_store
+
+        store = await async_get_draft_store(hass)
+        for hub in _light_hubs(hass, call.data.get("serial")):
+            snap = hub.capture_snapshot()
+            if snap is None:
+                _LOGGER.warning("save_settings skipped for %s: no state read yet", hub.serial)
+                continue
+            await store.async_commit(hub.serial, snap)
+            _LOGGER.info("Saved current settings for light %s", hub.serial)
+
+    async def handle_discard_changes(call: ServiceCall) -> None:
+        from .draft_store import async_get_draft_store
+
+        store = await async_get_draft_store(hass)
+        for hub in _light_hubs(hass, call.data.get("serial")):
+            baseline = store.saved(hub.serial)
+            if baseline is None:
+                _LOGGER.warning("Nothing saved for light %s - cannot discard", hub.serial)
+                continue
+            if hub.restore_snapshot(baseline):
+                _LOGGER.info("Rolled light %s back to its saved settings", hub.serial)
+
+    async def handle_unsaved_changes(call: ServiceCall) -> dict[str, Any]:
+        """Which lights are running something they haven't saved."""
+        from .draft_store import async_get_draft_store
+
+        store = await async_get_draft_store(hass)
+        lights = []
+        for hub in _light_hubs(hass, call.data.get("serial")):
+            current = hub.capture_snapshot()
+            lights.append({
+                "serial": hub.serial,
+                "unsaved": store.has_unsaved(hub.serial, current),
+                "saved_at": store.saved_at(hub.serial),
+                "known": current is not None,
+            })
+        return {"lights": lights, "any_unsaved": any(x["unsaved"] for x in lights)}
+
+    # -- preset slots (empty until the user fills them) --------------------
+
+    async def handle_save_slot(call: ServiceCall) -> None:
+        from .preset_store import async_get_store
+        from .presets import levels_from_current
+
+        hubs = _light_hubs(hass, call.data["serial"])
+        if not hubs:
+            return
+        hub = hubs[0]
+        index = int(call.data["slot"]) - 1
+        levels_pct = [cmd_to_pct(v) for v in hub.channels[: hub.roads]]
+        body = {"kind": "levels",
+                "levels": levels_from_current(levels_pct, hub.labels[: hub.roads])}
+        store = await async_get_store(hass)
+        await store.async_save_slot(index, call.data.get("name", ""), body)
+        _LOGGER.info("Saved slot %s from light %s", call.data["slot"], hub.serial)
+
+    async def handle_apply_slot(call: ServiceCall) -> None:
+        from .preset_store import async_get_store
+
+        store = await async_get_store(hass)
+        index = int(call.data["slot"]) - 1
+        slot = store.slots[index] if 0 <= index < len(store.slots) else None
+        if slot is None:
+            _LOGGER.warning("Preset slot %s is empty", call.data["slot"])
+            return
+        for hub in _light_hubs(hass, call.data.get("serial")):
+            hub.apply_preset(slot["body"])
+
+    async def handle_clear_slot(call: ServiceCall) -> None:
+        from .preset_store import async_get_store
+
+        store = await async_get_store(hass)
+        await store.async_clear_slot(int(call.data["slot"]) - 1)
+
+    # -- import / export ----------------------------------------------------
+
+    async def handle_export_config(call: ServiceCall) -> dict[str, Any]:
+        """A portable, label-keyed config others can import onto their light."""
+        from .draft import normalise_curve
+        from .preset_store import async_get_store
+        from .share import build_document
+
+        hubs = _light_hubs(hass, call.data["serial"])
+        if not hubs:
+            return {"error": f"No light with serial {call.data['serial']}"}
+        hub = hubs[0]
+        if not hub.has_state:
+            return {"error": "No configuration read from the light yet"}
+
+        labels = hub.labels[: hub.roads]
+        # Curves are stored per channel; turn them back into time points by
+        # taking every hour. Verbose, but lossless and trivially correct.
+        curves = [normalise_curve(row) for row in hub.state.road_data[: hub.roads]]
+        points = [
+            {"hour": h, "levels": [c[h] for c in curves]}
+            for h in range(24)
+        ]
+        slots = None
+        if call.data.get("include_slots", True):
+            store = await async_get_store(hass)
+            slots = [
+                None if s is None else {"name": s["name"],
+                                        "levels": s["body"].get("levels", {})}
+                for s in store.slots
+            ]
+        doc = build_document(
+            labels=labels, points=points, slots=slots,
+            model=hub.state.model, name=call.data.get("name"),
+        )
+        return {"config": doc}
+
+    async def handle_import_config(call: ServiceCall) -> dict[str, Any]:
+        """Validate a shared config and (optionally) preview it on the lights."""
+        from .draft_store import async_get_draft_store
+        from .preset_store import async_get_store
+        from .share import read_document
+
+        hubs = _light_hubs(hass, call.data.get("serial"))
+        if not hubs:
+            return {"ok": False, "error": "No matching light"}
+
+        results = []
+        draft = await async_get_draft_store(hass)
+        for hub in hubs:
+            parsed = read_document(call.data["config"], hub.labels[: hub.roads])
+            entry = {"serial": hub.serial, "ok": parsed["ok"],
+                     "error": parsed["error"], "warnings": parsed["warnings"],
+                     "applied": False}
+            if parsed["ok"] and call.data.get("apply", True) and parsed["points"]:
+                # Same baseline rule as preview_schedule: never let an import
+                # become its own saved state, or Discard has nothing to undo.
+                if draft.saved(hub.serial) is None:
+                    snap = hub.capture_snapshot()
+                    if snap is not None:
+                        await draft.async_commit(hub.serial, snap)
+                entry["applied"] = hub.apply_points(parsed["points"])
+            results.append(entry)
+
+        # Slots are shared across lights, so import them once.
+        first = read_document(call.data["config"], hubs[0].labels[: hubs[0].roads])
+        if first["ok"] and call.data.get("apply", True) and first["slots"]:
+            store = await async_get_store(hass)
+            for i, slot in enumerate(first["slots"]):
+                if slot:
+                    await store.async_save_slot(
+                        i, slot["name"], {"kind": "levels", "levels": slot["levels"]})
+
+        return {"ok": all(r["ok"] for r in results), "lights": results}
+
+    hass.services.async_register(DOMAIN, SERVICE_SAVE_SLOT, handle_save_slot, _SAVE_SLOT_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_APPLY_SLOT, handle_apply_slot, _APPLY_SLOT_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_CLEAR_SLOT, handle_clear_slot, _CLEAR_SLOT_SCHEMA)
+    hass.services.async_register(
+        DOMAIN, SERVICE_EXPORT_CONFIG, handle_export_config, _EXPORT_SCHEMA,
+        supports_response=SupportsResponse.ONLY)
+    hass.services.async_register(
+        DOMAIN, SERVICE_IMPORT_CONFIG, handle_import_config, _IMPORT_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL)
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_PREVIEW_SCHEDULE, handle_preview_schedule, _PREVIEW_SCHEDULE_SCHEMA)
+    hass.services.async_register(
+        DOMAIN, SERVICE_SAVE_SETTINGS, handle_save_settings, _COMMIT_SCHEMA)
+    hass.services.async_register(
+        DOMAIN, SERVICE_DISCARD_CHANGES, handle_discard_changes, _COMMIT_SCHEMA)
+    hass.services.async_register(
+        DOMAIN, SERVICE_UNSAVED_CHANGES, handle_unsaved_changes, _COMMIT_SCHEMA,
+        supports_response=SupportsResponse.ONLY)
 
     hass.services.async_register(DOMAIN, SERVICE_APPLY_PRESET, handle_apply_preset, _APPLY_PRESET_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_SAVE_PRESET, handle_save_preset, _SAVE_PRESET_SCHEMA)

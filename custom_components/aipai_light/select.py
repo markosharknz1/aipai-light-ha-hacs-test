@@ -94,6 +94,15 @@ class AipaiPresetSelect(SelectEntity):
         # than trying to reverse-engineer which preset the levels match.
         return self._applied if self._applied in self._store.names else None
 
+    @property
+    def extra_state_attributes(self) -> dict:
+        # The native card renders three slot chips; expose their names (and which
+        # are empty) so it doesn't have to guess from the flat options list.
+        return {
+            "aipai_kind": "presets",
+            "slots": self._store.slot_names(),   # [name | null, name | null, ...]
+        }
+
     async def async_select_option(self, option: str) -> None:
         preset = self._store.get(option)
         if preset is None:

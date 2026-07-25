@@ -11,7 +11,11 @@ Two kinds:
 * ``schedule`` — a full day. Builds a 24-point curve per channel from a peak
                  level, a window and a ramp, and switches to scheduled mode.
 
-Built-ins cover the common reef cases; users can save their own on top.
+There are **no built-in presets**. Every tank is different - livestock, depth,
+fixture height, what the owner is growing - so a canned "Bright day (SPS)" is a
+guess dressed up as advice. The slots start empty and you save your own from a
+look you have actually dialled in and seen in the water. Configs can be shared
+between keepers via export/import (see share.py).
 """
 from __future__ import annotations
 
@@ -38,26 +42,11 @@ def channel_weight(label: str) -> float:
     return _DEFAULT_WEIGHT
 
 
-BUILTIN_PRESETS: dict[str, dict[str, Any]] = {
-    # --- day schedules -----------------------------------------------------
-    "Bright day (SPS)": {"kind": "schedule", "peak": 90, "start": 9, "end": 17, "ramp": 2},
-    "Daylight": {"kind": "schedule", "peak": 65, "start": 9, "end": 17, "ramp": 2},
-    "Low light (FOWLR)": {"kind": "schedule", "peak": 35, "start": 9, "end": 17, "ramp": 2},
-    # --- instant looks -----------------------------------------------------
-    "Viewing (blue)": {"kind": "levels", "levels": {
-        "Blue": 85, "Blue1": 85, "Blue2": 85, "Blue3": 80, "Purple": 60,
-        "UV": 55, "White": 10, "Warm": 5, "Red": 5, "Green": 5,
-    }},
-    "Feeding": {"kind": "levels", "levels": {
-        "White": 35, "Warm": 30, "Blue": 25, "Blue1": 25, "Blue2": 25,
-        "Red": 10, "Green": 10, "Purple": 10, "UV": 0,
-    }},
-    "Maintenance": {"kind": "levels", "levels": {
-        "White": 90, "Warm": 80, "Blue": 60, "Blue1": 60, "Blue2": 60,
-        "Red": 40, "Green": 40, "Purple": 30, "UV": 0,
-    }},
-    "All off": {"kind": "levels", "levels": {}},   # everything falls back to 0
-}
+# Intentionally empty - see the module docstring. Kept as a name so the merge
+# path, the store and the select entity don't need special-casing for "none".
+BUILTIN_PRESETS: dict[str, dict[str, Any]] = {}
+
+SLOT_COUNT = 3   # the card offers three save slots; blank until you fill them
 
 
 def build_levels(preset: dict[str, Any], labels: list[str]) -> list[int]:
