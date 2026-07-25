@@ -39,6 +39,7 @@ SERVICE_SAVE_SETTINGS = "save_settings"
 SERVICE_DISCARD_CHANGES = "discard_changes"
 SERVICE_UNSAVED_CHANGES = "unsaved_changes"
 SERVICE_SAVE_SLOT = "save_slot"
+SERVICE_SET_SLOT = "set_slot"
 SERVICE_APPLY_SLOT = "apply_slot"
 SERVICE_CLEAR_SLOT = "clear_slot"
 SERVICE_EXPORT_CONFIG = "export_config"
@@ -124,6 +125,14 @@ _SAVE_SLOT_SCHEMA = vol.Schema({
 
 _APPLY_SLOT_SCHEMA = vol.Schema({_SERIAL: _SERIAL_VALUE, vol.Required("slot"): _SLOT})
 _CLEAR_SLOT_SCHEMA = vol.Schema({vol.Required("slot"): _SLOT})
+
+# Store explicit levels into a slot (edit a preset without touching the lights).
+# `levels` is label-keyed: {"Blue": 90, "White": 5, ...}.
+_SET_SLOT_SCHEMA = vol.Schema({
+    vol.Required("slot"): _SLOT,
+    vol.Required("name"): cv.string,
+    vol.Required("levels"): {cv.string: vol.All(vol.Coerce(int), vol.Range(min=0, max=100))},
+})
 
 _EXPORT_SCHEMA = vol.Schema({
     vol.Required("serial"): cv.string,
@@ -377,6 +386,14 @@ def async_register_services(hass: HomeAssistant) -> None:
         await store.async_save_slot(index, call.data.get("name", ""), body)
         _LOGGER.info("Saved slot %s from light %s", call.data["slot"], hub.serial)
 
+    async def handle_set_slot(call: ServiceCall) -> None:
+        from .preset_store import async_get_store
+
+        store = await async_get_store(hass)
+        body = {"kind": "levels", "levels": dict(call.data["levels"])}
+        await store.async_save_slot(int(call.data["slot"]) - 1, call.data["name"], body)
+        _LOGGER.info("Set slot %s = %r", call.data["slot"], call.data["name"])
+
     async def handle_apply_slot(call: ServiceCall) -> None:
         from .preset_store import async_get_store
 
@@ -471,6 +488,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         return {"ok": all(r["ok"] for r in results), "lights": results}
 
     hass.services.async_register(DOMAIN, SERVICE_SAVE_SLOT, handle_save_slot, _SAVE_SLOT_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_SET_SLOT, handle_set_slot, _SET_SLOT_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_APPLY_SLOT, handle_apply_slot, _APPLY_SLOT_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_CLEAR_SLOT, handle_clear_slot, _CLEAR_SLOT_SCHEMA)
     hass.services.async_register(

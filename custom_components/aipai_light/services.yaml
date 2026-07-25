@@ -332,6 +332,30 @@ save_slot:
       selector:
         text:
 
+
+set_slot:
+  name: Set preset slot (explicit levels)
+  description: >-
+    Store a preset directly from given channel levels, without capturing the
+    light's current state. Used when editing a preset's contents.
+  fields:
+    slot:
+      name: Slot
+      selector:
+        number:
+          min: 1
+          max: 3
+    name:
+      name: Name
+      example: "Evening blues"
+      selector:
+        text:
+    levels:
+      name: Levels
+      description: 'Channel levels keyed by label, e.g. {Blue: 90, White: 5}.'
+      selector:
+        object:
+
 apply_slot:
   name: Apply preset slot
   description: Apply a saved preset slot to one, many, or all lights.

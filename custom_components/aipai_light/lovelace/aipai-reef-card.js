@@ -178,6 +178,27 @@ class AipaiReefCard extends HTMLElement {
     return new Array(SLOT_COUNT).fill(null);
   }
 
+  // Each slot's stored levels, so a preset can be *viewed* before applying.
+  _slotDetails() {
+    if (this._hass) {
+      for (const st of Object.values(this._hass.states)) {
+        const a = st.attributes || {};
+        if (a.aipai_kind === "presets" && Array.isArray(a.slot_details)) {
+          return (a.slot_details.concat(new Array(SLOT_COUNT).fill(null))).slice(0, SLOT_COUNT);
+        }
+      }
+    }
+    return new Array(SLOT_COUNT).fill(null);
+  }
+
+  // A slot's levels as one value per channel in this fixture's label order.
+  _slotLevels(i, labels) {
+    const d = this._slotDetails()[i];
+    const wanted = {};
+    Object.entries((d && d.levels) || {}).forEach(([k, v]) => { wanted[k.toLowerCase()] = v; });
+    return labels.map((lab) => clamp100(wanted[(lab || "").toLowerCase()] ?? 0));
+  }
+
   // The tank's schedule as editable points. When editing we use the draft;
   // otherwise we derive keyframes from the first light's live curves.
   _points(lights) {
@@ -426,6 +447,36 @@ class AipaiReefCard extends HTMLElement {
           ${slots2.map((n, i) => `<span class="chip mini" data-saveslot="${i}">${i + 1} · ${n ? "replace “" + this._esc(n) + "”" : "empty"}</span>`).join("")}
           <span class="chip mini" data-saveslot="cancel">Cancel</span></div></div>`;
     }
+    if (s === "preset") {
+      const i = this._ui.presetSlot;
+      const name = (this._slots()[i]) || `Preset ${i + 1}`;
+      const editing = this._ui.presetEdit;
+      // While editing we work on a local copy; viewing reads the stored levels.
+      const vals = editing ? this._ui.presetDraft : this._slotLevels(i, labels);
+      return `<div class="sheet">
+        <div class="q">${editing ? "Editing" : "Preset"} — ${this._esc(name)}</div>
+        <div class="lbl" style="padding-bottom:6px">${editing
+          ? "Change the levels, then Save. The lights don't change until you Apply."
+          : "This is what the preset holds. The lights haven't changed."}</div>
+        ${labels.map((lab, ci) => {
+          const v = clamp100(vals[ci]);
+          const bar = editing
+            ? `<span class="tr" data-slci="${ci}" tabindex="0" role="slider" aria-label="${this._esc(lab)}" aria-valuenow="${v}" aria-valuemin="0" aria-valuemax="100">
+                 <span class="fi" style="width:${v}%;background:${colourFor(lab)}"></span>
+                 <span class="kn" style="left:${v}%;background:${colourFor(lab)}"></span></span>`
+            : `<span class="tr ro"><span class="fi" style="width:${v}%;background:${colourFor(lab)}"></span></span>`;
+          return `<div class="ch"><span class="cn">${this._esc(lab)}</span>${bar}<span class="vv">${v}%</span></div>`;
+        }).join("")}
+        <div class="row wrap" style="padding-top:6px">
+          ${editing
+            ? `<span class="chip mini" data-preset="save">Save preset</span>
+               <span class="chip mini" data-preset="cancel">Cancel</span>`
+            : `<span class="chip mini" data-preset="apply">Apply to tank</span>
+               <span class="chip mini" data-preset="edit">Edit</span>
+               <span class="chip mini" data-preset="delete">Delete</span>
+               <span class="chip mini" data-preset="close">Close</span>`}
+        </div></div>`;
+    }
     return "";
   }
 
@@ -447,6 +498,10 @@ class AipaiReefCard extends HTMLElement {
     $$("[data-commit]").forEach((b) => b.onclick = () => this._onCommit(b.dataset.commit));
     $$("[data-slot]").forEach((c) => c.onclick = () => this._onSlot(+c.dataset.slot));
     $$("[data-saveslot]").forEach((c) => c.onclick = () => this._onSaveSlot(c.dataset.saveslot));
+
+    // preset view / edit
+    $$("[data-preset]").forEach((b) => b.onclick = () => this._onPreset(b.dataset.preset));
+    $$("[data-slci]").forEach((tr) => this._wirePresetSlider(tr));
 
     // schedule points
     $$("[data-ptsel]").forEach((c) => c.onclick = () => { this._ui.sel = +c.dataset.ptsel; this._ui.focusCh = null; this._render(); });
@@ -682,7 +737,73 @@ class AipaiReefCard extends HTMLElement {
   _onSlot(i) {
     const slots = this._slots();
     if (slots[i] == null) { this._ui.sheet = "save"; this._render(); return; }
-    this._call("apply_slot", { serial: this._serials(this._lights()), slot: i + 1 });
+    // Tapping a preset VIEWS it - it does not touch the lights. Applying is a
+    // deliberate button inside the sheet.
+    this._ui.sheet = "preset";
+    this._ui.presetSlot = i;
+    this._ui.presetEdit = false;
+    this._render();
+  }
+
+  _onPreset(which) {
+    const i = this._ui.presetSlot;
+    const labels = this._labels(this._lights());
+    if (which === "apply") {
+      this._call("apply_slot", { serial: this._serials(this._lights()), slot: i + 1 })
+        .then(() => this._refreshUnsaved());
+      this._ui.sheet = null;
+    } else if (which === "edit") {
+      this._ui.presetEdit = true;
+      this._ui.presetDraft = this._slotLevels(i, labels);   // local copy
+    } else if (which === "cancel") {
+      this._ui.presetEdit = false;
+    } else if (which === "save") {
+      const levels = {};
+      labels.forEach((lab, ci) => { levels[lab] = clamp100(this._ui.presetDraft[ci]); });
+      const name = (this._slots()[i]) || `Preset ${i + 1}`;
+      this._call("set_slot", { slot: i + 1, name, levels });   // pure data, lights untouched
+      this._ui.presetEdit = false;
+    } else if (which === "delete") {
+      this._call("clear_slot", { slot: i + 1 });
+      this._ui.sheet = null;
+    } else if (which === "close") {
+      this._ui.sheet = null;
+    }
+    this._render();
+  }
+
+  _wirePresetSlider(tr) {
+    const ci = +tr.dataset.slci;
+    const paint = (v) => {
+      tr.querySelector(".fi").style.width = v + "%";
+      tr.querySelector(".kn").style.left = v + "%";
+      tr.parentElement.querySelector(".vv").textContent = v + "%";
+      tr.setAttribute("aria-valuenow", v);
+    };
+    const at = (e) => {
+      const b = tr.getBoundingClientRect();
+      return clamp100(((e.clientX - b.left) / b.width) * 100);
+    };
+    tr.onpointerdown = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      tr.setPointerCapture(e.pointerId);
+      this._ui.dragging = true;
+      this._ui.presetDraft[ci] = at(e); paint(this._ui.presetDraft[ci]);
+      tr.onpointermove = (ev) => { this._ui.presetDraft[ci] = at(ev); paint(this._ui.presetDraft[ci]); };
+    };
+    tr.onpointerup = (e) => {
+      tr.onpointermove = null;
+      try { tr.releasePointerCapture(e.pointerId); } catch (_) {}
+      this._ui.dragging = false;
+      this._render();   // editing a preset never previews on the lights
+    };
+    tr.onkeydown = (e) => {
+      const d = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
+      if (d === undefined) return;
+      e.preventDefault();
+      this._ui.presetDraft[ci] = clamp100(this._ui.presetDraft[ci] + d * (e.shiftKey ? 10 : 1));
+      paint(this._ui.presetDraft[ci]);
+    };
   }
 
   _onSaveSlot(v) {
@@ -798,6 +919,7 @@ class AipaiReefCard extends HTMLElement {
         position: relative; cursor: pointer; touch-action: none; outline: none; }
       .ch .tr::after { content: ""; position: absolute; left: 0; right: 0; top: -8px; bottom: -8px; }
       .ch .tr:focus-visible .kn { box-shadow: 0 0 0 3px var(--primary); }
+      .ch .tr.ro { cursor: default; } .ch .tr.ro::after { display: none; }
       .ch .fi { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; }
       .ch .kn { position: absolute; top: 50%; width: 13px; height: 13px; border-radius: 50%;
         transform: translate(-50%, -50%); box-shadow: 0 1px 3px rgba(0,0,0,.35); }

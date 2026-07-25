@@ -96,11 +96,23 @@ class AipaiPresetSelect(SelectEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        # The native card renders three slot chips; expose their names (and which
-        # are empty) so it doesn't have to guess from the flat options list.
+        # The native card renders three slot chips and lets you *view* a preset
+        # before applying it, so expose both the names and each slot's stored
+        # levels (label-keyed), not just the flat options list.
+        details = []
+        for slot in self._store.slots:
+            if slot is None:
+                details.append(None)
+            else:
+                body = slot.get("body") or {}
+                details.append({
+                    "name": slot.get("name", ""),
+                    "levels": body.get("levels", {}),
+                })
         return {
             "aipai_kind": "presets",
-            "slots": self._store.slot_names(),   # [name | null, name | null, ...]
+            "slots": self._store.slot_names(),   # [name | null, ...]
+            "slot_details": details,             # [{name, levels} | null, ...]
         }
 
     async def async_select_option(self, option: str) -> None:
