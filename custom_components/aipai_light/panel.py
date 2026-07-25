@@ -24,7 +24,7 @@ PANEL_ICON = "mdi:jellyfish"
 # dashboard load, so `type: custom:aipai-reef-card` works with no manual
 # resource setup - the point of bundling it with the integration.
 CARD_URL = "/aipai_light/aipai-reef-card.js"
-CARD_VERSION = "0.5.1"   # bump to bust the browser cache when the card changes
+CARD_VERSION = "0.5.2"   # bump to bust the browser cache when the card changes
 
 _REGISTERED_KEY = "aipai_light_panel_registered"
 _CARD_REGISTERED_KEY = "aipai_light_card_registered"
@@ -51,20 +51,75 @@ async def async_register_card(hass: HomeAssistant) -> None:
     except RuntimeError:
         pass  # already registered (reload)
 
-    # add_extra_js_url injects the module on every dashboard, so users don't
-    # have to add a Lovelace resource by hand (which also fails in YAML mode).
-    try:
-        from homeassistant.components import frontend
-
-        frontend.add_extra_js_url(hass, f"{CARD_URL}?v={CARD_VERSION}")
-    except Exception as err:  # noqa: BLE001
-        _LOGGER.info(
-            "Could not auto-add the AIPAI card resource (%s). Add it manually: "
-            "Settings > Dashboards > Resources > %s (JavaScript module).",
-            err, CARD_URL,
-        )
-
     hass.data[_CARD_REGISTERED_KEY] = True
+
+    # Register the card as a Lovelace *resource* - this is what actually makes
+    # `custom:aipai-reef-card` resolve on storage-mode dashboards. (The older
+    # add_extra_js_url approach did not reliably load the module, so users had
+    # to add the resource by hand.) Do it once HA has started, when the Lovelace
+    # resource collection is guaranteed to exist; async_at_started fires
+    # immediately if HA is already running (e.g. a HACS update + reload).
+    from homeassistant.helpers.start import async_at_started
+
+    async def _add_card_resource(_event=None) -> None:
+        if await _register_lovelace_resource(hass):
+            _LOGGER.info("AIPAI Reef card registered as a Lovelace resource")
+            return
+        # No storage-mode resource collection (YAML-mode dashboards) - fall back
+        # to injecting the module globally, and tell the user how to do it by hand
+        # if even that isn't available.
+        try:
+            from homeassistant.components import frontend
+
+            frontend.add_extra_js_url(hass, f"{CARD_URL}?v={CARD_VERSION}")
+            _LOGGER.info("AIPAI Reef card injected via extra_js_url (YAML mode)")
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning(
+                "Could not auto-load the AIPAI Reef card (%s). Add it by hand: "
+                "Settings > Dashboards > (top-right) Resources > Add > "
+                "URL %s , type JavaScript module.",
+                err, f"{CARD_URL}?v={CARD_VERSION}",
+            )
+
+    async_at_started(hass, _add_card_resource)
+
+
+async def _register_lovelace_resource(hass: HomeAssistant) -> bool:
+    """Add (or update) the card in the Lovelace resource collection.
+
+    Returns True if the storage-backed resource collection handled it, False if
+    it isn't available (e.g. YAML-mode dashboards, which are read-only here).
+    Guarded heavily because ``hass.data['lovelace']`` has changed shape across
+    Home Assistant versions.
+    """
+    url = f"{CARD_URL}?v={CARD_VERSION}"
+    try:
+        lovelace = hass.data.get("lovelace")
+        resources = getattr(lovelace, "resources", None)
+        if resources is None and isinstance(lovelace, dict):
+            resources = lovelace.get("resources")
+        # YAML-mode collections have no async_create_item - not our path.
+        if resources is None or not hasattr(resources, "async_create_item"):
+            return False
+
+        # Ensure the collection has read its store before we inspect it.
+        if hasattr(resources, "loaded") and not resources.loaded:
+            await resources.async_load()
+            resources.loaded = True
+
+        for item in resources.async_items():
+            if str(item.get("url", "")).split("?")[0] == CARD_URL:
+                # Already present (incl. a hand-added one) - keep the version
+                # query current so the browser cache busts on upgrades.
+                if item.get("url") != url and item.get("id"):
+                    await resources.async_update_item(item["id"], {"url": url})
+                return True
+
+        await resources.async_create_item({"res_type": "module", "url": url})
+        return True
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.debug("Lovelace resource registration skipped: %s", err)
+        return False
 
 
 async def async_register_panel(hass: HomeAssistant) -> None:
