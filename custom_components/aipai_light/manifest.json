@@ -9,9 +9,9 @@
     "http",
     "frontend"
   ],
-  "documentation": "https://github.com/markosharknz1/aipai-light-ha",
+  "documentation": "https://github.com/markosharknz1/ha-aipai-light",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/markosharknz1/aipai-light-ha/issues",
+  "issue_tracker": "https://github.com/markosharknz1/ha-aipai-light/issues",
   "requirements": [
     "paho-mqtt>=1.6.1"
   ],
