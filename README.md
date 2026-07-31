@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/icon.png" width="128" alt="AIPAI Aquarium Light (unofficial)"></p>
+
 # AIPAI Aquarium Light for Home Assistant
 
 An unofficial Home Assistant custom integration for AIPAI-branded WiFi aquarium

@@ -1,0 +1,33 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a7ec4"/><stop offset="1" stop-color="#04203f"/></linearGradient>
+<linearGradient id="beamW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".55"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+<linearGradient id="coral" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb057"/><stop offset="1" stop-color="#ff5f86"/></linearGradient>
+<clipPath id="clip"><rect x="0" y="0" width="512" height="512" rx="114"/></clipPath>
+</defs>
+<rect x="0" y="0" width="512" height="512" rx="114" fill="url(#tile)"/>
+<g clip-path="url(#clip)">
+<ellipse cx="256" cy="70" rx="240" ry="90" fill="#ffffff" opacity=".08"/>
+<polygon points="205,150 307,150 384,320 128,320" fill="url(#beamW)"/>
+<polygon points="228,150 250,150 214,318 176,318" fill="#7fd3ff" opacity=".28"/>
+<polygon points="262,150 284,150 336,318 298,318" fill="#b98bff" opacity=".26"/>
+<polygon points="246,150 266,150 276,318 244,318" fill="#fff0c2" opacity=".30"/>
+<rect x="146" y="104" width="220" height="30" rx="15" fill="#1d2c3e"/>
+<rect x="146" y="104" width="220" height="10" rx="5" fill="#33465c"/>
+<circle cx="176" cy="119" r="5" fill="#ffffff"/><circle cx="208" cy="119" r="5" fill="#7fd3ff"/><circle cx="240" cy="119" r="5" fill="#2e6bff"/><circle cx="272" cy="119" r="5" fill="#b06bff"/><circle cx="304" cy="119" r="5" fill="#57e07a"/><circle cx="336" cy="119" r="5" fill="#ffc24d"/>
+<ellipse cx="256" cy="440" rx="230" ry="60" fill="#e6cd8f" opacity=".85"/>
+<g stroke="url(#coral)" stroke-width="19" stroke-linecap="round" fill="none">
+<path d="M256 430 L256 344"/><path d="M256 392 L222 342"/><path d="M256 382 L292 338"/><path d="M222 352 L202 374"/><path d="M292 348 L312 372"/><path d="M256 350 L256 322"/>
+</g>
+<g stroke="url(#coral)" stroke-width="14" stroke-linecap="round" fill="none" opacity=".92">
+<path d="M338 430 L338 388"/><path d="M338 404 L320 376"/><path d="M338 398 L356 378"/>
+</g>
+<g stroke="url(#coral)" stroke-width="12" stroke-linecap="round" fill="none" opacity=".85">
+<path d="M182 430 L182 402"/><path d="M182 412 L168 394"/>
+</g>
+<rect x="0" y="430" width="512" height="82" fill="#02152b" opacity=".62"/>
+<text x="256" y="462" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="34" font-weight="600" letter-spacing="9" fill="#dcefff">AIPAI</text>
+<text x="256" y="494" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="23" font-weight="700" letter-spacing="5" fill="#ff453a">UNOFFICIAL</text>
+</g>
+<rect x="5" y="5" width="502" height="502" rx="110" fill="none" stroke="#ffffff" stroke-opacity=".16" stroke-width="3"/>
+</svg>
