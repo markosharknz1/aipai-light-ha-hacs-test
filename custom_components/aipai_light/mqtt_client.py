@@ -1,8 +1,7 @@
 """Thin wrapper around paho-mqtt for talking to the AIPAI/doseen cloud broker.
 
-Connects over MQTT-over-WebSocket (plain, not TLS - matching the vendor app)
-with credentials hardcoded identically into every install of the app, not
-per-account.
+Connects over MQTT-over-WebSocket (plain, not TLS - matching the vendor app),
+using the broker credentials the app itself uses.
 """
 from __future__ import annotations
 

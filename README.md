@@ -76,13 +76,6 @@ The config flow can also add **experimental, unverified** support for the
 non-light AIPAI devices (pumps, doser, skimmer, ATO, chiller, …); only "Light"
 is hardware-verified.
 
-## Security
-
-The vendor's cloud broker uses **one shared, hardcoded username and password
-across every copy of the app** — not tied to your account or device. This
-integration uses the same shared credentials the app does, because there's no
-alternative — it's a manufacturer design decision, not introduced here.
-
 ## License
 
 MIT — see [LICENSE](LICENSE). Provided as-is with no warranty; you are
