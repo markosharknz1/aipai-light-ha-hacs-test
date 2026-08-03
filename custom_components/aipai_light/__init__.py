@@ -46,6 +46,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady(f"Cannot reach AIPAI broker: {err}") from err
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = hub
+
+    # Re-arm (or revert) any timed lights-off that was pending across a restart -
+    # never leave a tank dark because the in-memory timer was lost.
+    if device_type == DEVICE_TYPE_LIGHT:
+        from .off_store import async_get_off_store
+
+        off_store = await async_get_off_store(hass)
+        hub.attach_off_store(off_store)
+        pending = off_store.get(serial)
+        if pending:
+            await hub.async_restore_off(pending)
+
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

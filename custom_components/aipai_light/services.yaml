@@ -431,3 +431,42 @@ import_config:
       description: Turn off to validate the config without changing the lights.
       selector:
         boolean:
+
+lights_off:
+  name: Lights off (timer)
+  description: >-
+    Turn the tank off now and automatically bring it back after a set time.
+    If it was following its schedule, it resumes the schedule; if manual, its
+    levels come back. Survives a Home Assistant restart.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:
+    minutes:
+      name: For (minutes)
+      description: How long to stay off. Use this or "until", not both.
+      selector:
+        number:
+          min: 1
+          max: 1440
+          unit_of_measurement: min
+    until:
+      name: Until (time)
+      description: Local clock time to come back on (HH:MM). Use this or "minutes".
+      example: "07:00"
+      selector:
+        text:
+
+cancel_lights_off:
+  name: Cancel lights off
+  description: Cancel a pending timed-off and bring the tank back now.
+  fields:
+    serial:
+      name: Serial
+      description: One serial, a list of serials, or omit for every light.
+      example: "12345678"
+      selector:
+        text:

@@ -116,4 +116,5 @@ class AipaiScheduleSensor(SensorEntity):
             "curves": _rows_to_curves(st.road_data, self._hub.roads),
             "moon": self._hub.moon,
             "last_command": self._hub.last_ack,
+            "off_until": self._hub.off_until.isoformat() if self._hub.off_until else None,
         }

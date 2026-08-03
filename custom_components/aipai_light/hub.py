@@ -6,9 +6,12 @@ import time
 from datetime import timedelta
 from typing import Any
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import (
+    async_track_point_in_time,
+    async_track_time_interval,
+)
 from homeassistant.util import dt as dt_util
 
 from .const import DEFAULT_LABELS, DOMAIN
@@ -51,6 +54,11 @@ class AipaiLightHub:
         self._restore: list[int] = [pct_to_cmd(50)] * self.state.roads
 
         self._entities: list[Any] = []
+        # Timed lights-off state.
+        self._off_store = None
+        self._off_unsub = None
+        self._off_prev: tuple[str, list[int]] | None = None
+        self.off_until = None
         self.client = AipaiMqttClient(
             serial,
             on_message=self._handle_message,
@@ -72,10 +80,10 @@ class AipaiLightHub:
         )
 
     async def async_disconnect(self) -> None:
-        for unsub in (self._poll_unsub, self._clock_unsub):
+        for unsub in (self._poll_unsub, self._clock_unsub, self._off_unsub):
             if unsub:
                 unsub()
-        self._poll_unsub = self._clock_unsub = None
+        self._poll_unsub = self._clock_unsub = self._off_unsub = None
         await self.hass.async_add_executor_job(self.client.disconnect)
 
     async def _async_clock_tick(self, _now) -> None:  # noqa: ANN001
@@ -183,6 +191,103 @@ class AipaiLightHub:
 
     def restart(self) -> None:
         self.client.restart()
+
+    # -- timed lights-off --------------------------------------------------
+
+    def attach_off_store(self, store) -> None:  # noqa: ANN001
+        self._off_store = store
+
+    async def async_lights_off(self, revert_at, *, persist: bool = True) -> None:
+        """Turn the tank off now and schedule its return at ``revert_at``.
+
+        Captures what to restore first: if the light was on its schedule
+        (mode 1) it resumes the schedule on revert; if it was manual, its levels
+        come back. Persisted so a restart re-arms or reverts (see off_store).
+        """
+        from datetime import datetime
+
+        prev_mode = self.state.mode if self.has_state else "1"
+        prev_pct = [cmd_to_pct(c) for c in self.channels[: self.roads]]
+        self._off_prev = (prev_mode, prev_pct)
+
+        self._cancel_off_timer()
+        self.turn_all_off()
+        if self.has_state and self.state.mode != "0":
+            self.set_mode("0")  # hold off; don't let the schedule re-light it
+
+        self.off_until = revert_at
+        self._off_unsub = async_track_point_in_time(
+            self.hass, self._on_off_expired, revert_at
+        )
+        if persist and self._off_store is not None:
+            iso = revert_at.isoformat() if isinstance(revert_at, datetime) else str(revert_at)
+            await self._off_store.async_set(self.serial, iso, prev_mode, prev_pct)
+        _LOGGER.info("Lights off for %s until %s", self.serial, self.off_until)
+        self._notify()
+
+    async def async_cancel_off(self, *, revert: bool = True) -> None:
+        """Cancel a pending timed-off; by default restore the tank now."""
+        self._cancel_off_timer()
+        prev = self._off_prev
+        self.off_until = None
+        self._off_prev = None
+        if self._off_store is not None:
+            await self._off_store.async_clear(self.serial)
+        if revert and prev is not None:
+            self._apply_revert(*prev)
+        self._notify()
+
+    async def async_restore_off(self, entry: dict) -> None:
+        """On startup, re-arm or immediately revert a persisted timed-off."""
+        try:
+            revert_at = dt_util.parse_datetime(entry["revert_at"])
+        except (KeyError, TypeError):
+            revert_at = None
+        prev_mode = entry.get("prev_mode", "1")
+        prev_pct = entry.get("prev_pct", [])
+        self._off_prev = (prev_mode, prev_pct)
+        if revert_at is None or revert_at <= dt_util.utcnow():
+            # Deadline already passed while HA was down - bring the tank back.
+            _LOGGER.info("Timed-off for %s already expired; restoring", self.serial)
+            self._apply_revert(prev_mode, prev_pct)
+            if self._off_store is not None:
+                await self._off_store.async_clear(self.serial)
+            return
+        # Still within the window - hold off and re-arm for the remainder.
+        self.off_until = revert_at
+        self.turn_all_off()
+        self._off_unsub = async_track_point_in_time(
+            self.hass, self._on_off_expired, revert_at
+        )
+        _LOGGER.info("Re-armed timed-off for %s until %s", self.serial, revert_at)
+        self._notify()
+
+    def _cancel_off_timer(self) -> None:
+        if self._off_unsub:
+            self._off_unsub()
+            self._off_unsub = None
+
+    @callback
+    def _on_off_expired(self, _now) -> None:  # noqa: ANN001
+        # @callback => runs in the event loop, so async_create_task is safe.
+        self.hass.async_create_task(self._async_off_expired())
+
+    async def _async_off_expired(self) -> None:
+        prev = self._off_prev or ("1", [])
+        self._off_unsub = None
+        self.off_until = None
+        self._off_prev = None
+        if self._off_store is not None:
+            await self._off_store.async_clear(self.serial)
+        self._apply_revert(*prev)
+        self._notify()
+
+    def _apply_revert(self, prev_mode: str, prev_pct: list[int]) -> None:
+        if self.has_state and str(prev_mode) == "1":
+            self.set_mode("1")  # resume the stored schedule
+        else:
+            for i, pct in enumerate(prev_pct[: self.roads]):
+                self.set_channel(i, pct_to_cmd(pct))
 
     # -- time / schedule / moon -------------------------------------------
 

@@ -44,6 +44,8 @@ SERVICE_APPLY_SLOT = "apply_slot"
 SERVICE_CLEAR_SLOT = "clear_slot"
 SERVICE_EXPORT_CONFIG = "export_config"
 SERVICE_IMPORT_CONFIG = "import_config"
+SERVICE_LIGHTS_OFF = "lights_off"
+SERVICE_CANCEL_LIGHTS_OFF = "cancel_lights_off"
 
 _SERIAL = vol.Optional("serial")
 # A serial may be one value, a list of values, or omitted (= all lights).
@@ -114,6 +116,14 @@ _PREVIEW_SCHEDULE_SCHEMA = vol.Schema({
 })
 
 _COMMIT_SCHEMA = vol.Schema({_SERIAL: _SERIAL_VALUE})
+
+# Timed lights-off: either a duration in minutes, or a clock time to come back on.
+_LIGHTS_OFF_SCHEMA = vol.Schema({
+    _SERIAL: _SERIAL_VALUE,
+    vol.Exclusive("minutes", "when"): vol.All(vol.Coerce(int), vol.Range(min=1, max=1440)),
+    vol.Exclusive("until", "when"): cv.string,   # "HH:MM" local time
+})
+_CANCEL_OFF_SCHEMA = vol.Schema({_SERIAL: _SERIAL_VALUE})
 
 _SLOT = vol.All(vol.Coerce(int), vol.Range(min=1, max=3))   # 1-based for humans
 
@@ -486,6 +496,40 @@ def async_register_services(hass: HomeAssistant) -> None:
                         i, slot["name"], {"kind": "levels", "levels": slot["levels"]})
 
         return {"ok": all(r["ok"] for r in results), "lights": results}
+
+    # -- timed lights-off --------------------------------------------------
+
+    async def handle_lights_off(call: ServiceCall) -> None:
+        from datetime import timedelta
+
+        from homeassistant.util import dt as dt_util
+
+        minutes = call.data.get("minutes")
+        until = call.data.get("until")
+        if minutes is not None:
+            revert_at = dt_util.utcnow() + timedelta(minutes=int(minutes))
+        elif until:
+            h, m = (until.split(":", 1) + ["0"])[:2]
+            local_now = dt_util.now()
+            target = local_now.replace(hour=int(h), minute=int(m), second=0, microsecond=0)
+            if target <= local_now:
+                target += timedelta(days=1)   # that time already passed today
+            revert_at = dt_util.as_utc(target)
+        else:
+            # No duration given - default to a 1-hour off.
+            revert_at = dt_util.utcnow() + timedelta(hours=1)
+
+        for hub in _light_hubs(hass, call.data.get("serial")):
+            await hub.async_lights_off(revert_at)
+
+    async def handle_cancel_lights_off(call: ServiceCall) -> None:
+        for hub in _light_hubs(hass, call.data.get("serial")):
+            await hub.async_cancel_off(revert=True)
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_LIGHTS_OFF, handle_lights_off, _LIGHTS_OFF_SCHEMA)
+    hass.services.async_register(
+        DOMAIN, SERVICE_CANCEL_LIGHTS_OFF, handle_cancel_lights_off, _CANCEL_OFF_SCHEMA)
 
     hass.services.async_register(DOMAIN, SERVICE_SAVE_SLOT, handle_save_slot, _SAVE_SLOT_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_SET_SLOT, handle_set_slot, _SET_SLOT_SCHEMA)
