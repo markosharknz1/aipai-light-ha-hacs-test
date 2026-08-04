@@ -72,6 +72,11 @@ A7-S, A7-P, A7-P4, A46-P, …). Unknown models fall back to a channel count deri
 from the light's own state. **Only the A8-SE8 has been verified on real
 hardware;** other mappings are transcribed from the app — please report back.
 
+> **A7S III — knobs must be to the LEFT.** The A7S III has two physical knobs
+> (**Bright** and **Colour**). They must both be turned **fully to the left**
+> (minimum) for WiFi/automation control to work — otherwise the knobs override
+> the schedule and the integration can't drive the light.
+
 The config flow can also add **experimental, unverified** support for the
 non-light AIPAI devices (pumps, doser, skimmer, ATO, chiller, …); only "Light"
 is hardware-verified.
