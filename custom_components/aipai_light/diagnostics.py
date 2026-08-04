@@ -21,9 +21,14 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> dict[str, Any]:
     hub = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    # The entry title embeds the serial ("AIPAI Light (verified) 12345678"), and
+    # a diagnostics dump is shareable - strip it out (async_redact_data only
+    # redacts by key, so the title needs doing by hand).
+    serial = str(entry.data.get(CONF_SERIAL, ""))
+    title = entry.title.replace(serial, "**REDACTED**") if serial else entry.title
     data: dict[str, Any] = {
         "entry": {
-            "title": entry.title,
+            "title": title,
             "data": dict(entry.data),
             "options": dict(entry.options),
         }

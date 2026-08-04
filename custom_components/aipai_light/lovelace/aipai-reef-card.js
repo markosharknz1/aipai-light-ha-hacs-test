@@ -125,6 +125,11 @@ class AipaiReefCard extends HTMLElement {
     // (a stale baseline once wrote all-channels-10% back to a healthy tank).
     this._session = null;
     this._built = false;
+    // Last-known info per serial, so a light that goes unavailable stays on the
+    // card (as an "unavailable" row) instead of flickering out. HA strips a
+    // light's attributes when it drops, so we can't re-identify it then - we
+    // remember what we saw while it was up.
+    this._seen = {};
   }
 
   setConfig(config) {
@@ -159,7 +164,7 @@ class AipaiReefCard extends HTMLElement {
       const a = st.attributes || {};
       if (a.aipai_kind !== "schedule") continue;
       if (want && !want.has(String(a.aipai_serial))) continue;
-      out.push({
+      const light = {
         entity: id,
         serial: String(a.aipai_serial),
         labels: a.labels || [],
@@ -168,10 +173,50 @@ class AipaiReefCard extends HTMLElement {
         moon: a.moon || {},
         mode: a.mode,
         temperature: a.temperature,
-      });
+      };
+      out.push(light);
+      // Remember it so it stays visible if it later drops offline.
+      this._seen[light.serial] = {
+        entity: id, serial: light.serial, labels: light.labels,
+        roads: light.roads, model: a.model || "",
+      };
     }
     out.sort((x, y) => x.serial.localeCompare(y.serial));
     return out;
+  }
+
+  // Lights to *display*: the ones online now, plus any that are configured or
+  // were seen this session but have since gone unavailable - shown as an
+  // "unavailable" row rather than vanishing. (Control/schedule still only uses
+  // the online ones - you can't drive an offline light.)
+  _visibleLights() {
+    const available = this._lights();
+    const online = new Set(available.map((l) => l.serial));
+    const want = this._config.serials ? this._config.serials.map(String) : null;
+    const extra = [];
+
+    if (want) {
+      // Explicit card: always show a row for every configured light.
+      for (const s of want) {
+        if (online.has(s)) continue;
+        const seen = this._seen[s] || {};
+        extra.push({ serial: s, unavailable: true, labels: seen.labels || [],
+          roads: seen.roads || 0 });
+      }
+    } else {
+      // All-lights card: keep showing a seen light that dropped, as long as HA
+      // still has its entity (i.e. the device wasn't removed).
+      for (const [s, info] of Object.entries(this._seen)) {
+        if (online.has(s)) continue;
+        if (this._hass && this._hass.states[info.entity]) {
+          extra.push({ serial: s, unavailable: true, labels: info.labels || [],
+            roads: info.roads || 0 });
+        } else {
+          delete this._seen[s];   // device genuinely gone
+        }
+      }
+    }
+    return [...available, ...extra].sort((x, y) => x.serial.localeCompare(y.serial));
   }
 
   _slots() {
@@ -315,7 +360,8 @@ class AipaiReefCard extends HTMLElement {
   // -- rendering ---------------------------------------------------------
 
   _render() {
-    const lights = this._lights();
+    const lights = this._lights();          // online only - drives schedule/control
+    const visible = this._visibleLights();  // online + sticky-unavailable - display
     const labels = this._labels(lights);
     const points = this._points(lights);
     const slots = this._slots();
@@ -325,8 +371,9 @@ class AipaiReefCard extends HTMLElement {
     const avg = temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : "–";
     const name = this._config.name || "Reef tank";
     const moon = this._draft ? this._draft.moon : (lights[0] && lights[0].moon) || {};
+    const offline = visible.length - lights.length;
 
-    if (!lights.length) {
+    if (!visible.length) {
       this.shadowRoot.innerHTML = `${this._style()}<div class="card"><div class="empty">
         No AIPAI lights found.${this._config.serials ? " Check the serials in this card's config." : ""}
       </div></div>`;
@@ -337,7 +384,7 @@ class AipaiReefCard extends HTMLElement {
       <div class="card${sheeting ? " sheeting" : ""}">
         <div class="hdr">
           <div class="ttl"><div class="n">${name}</div>
-            <div class="s">${lights.length} light${lights.length > 1 ? "s" : ""} · ${avg} °C avg</div></div>
+            <div class="s">${visible.length} light${visible.length > 1 ? "s" : ""} · ${avg} °C avg${offline > 0 ? ` · ${offline} offline` : ""}</div></div>
         </div>
         <div class="row slots">
           ${slots.map((n2, i) => n2
@@ -352,7 +399,7 @@ class AipaiReefCard extends HTMLElement {
           ${this._svg(points, labels, moon, this._ui.sheet === "sched", sel, this._ui.focusCh)}
         </div>
         <div class="axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
-        ${lights.map((l) => this._lightRow(l, sheeting)).join("")}
+        ${visible.map((l) => this._lightRow(l, sheeting)).join("")}
         <div class="ftr">
           <span class="btn" data-act="sched">EDIT SCHEDULE</span>
           <span class="btn" data-act="moon">MOONLIGHT</span>
@@ -364,13 +411,20 @@ class AipaiReefCard extends HTMLElement {
   }
 
   _lightRow(l, sheeting) {
+    if (l.unavailable) {
+      return `<div class="lite off">
+        <div class="literow">
+          <div class="ttl"><div class="n sm">${this._esc(l.serial)}</div>
+            <div class="s">Unavailable — not reaching the cloud</div></div>
+        </div></div>`;
+    }
     const cls = sheeting ? " affected" : "";
     const tag = sheeting ? `<span class="rtag">will change</span>` : "";
     const t = typeof l.temperature === "number" ? ` · ${l.temperature} °C` : "";
     const modeTxt = l.mode === "1" ? "Scheduled" : "Manual";
     return `<div class="lite${cls}">
       <div class="literow">
-        <div class="ttl"><div class="n sm">${l.serial}${tag}</div>
+        <div class="ttl"><div class="n sm">${this._esc(l.serial)}${tag}</div>
           <div class="s">${modeTxt}${t}</div></div>
       </div></div>`;
   }
@@ -970,6 +1024,7 @@ class AipaiReefCard extends HTMLElement {
         background: var(--card-background-color); color: var(--primary-text-color);
         padding: 8px; resize: vertical; box-sizing: border-box; }
       .lite { border-top: 1px solid var(--divider-color); }
+      .lite.off { opacity: .5; }
       .card.sheeting .lite.affected { background: rgba(3,169,244,.06); }
       .literow { display: flex; align-items: center; padding: 8px 2px; }
       .rtag { font-size: .66rem; color: var(--primary); border: 1px solid var(--primary);
