@@ -135,7 +135,11 @@ class AipaiReefCard extends HTMLElement {
 
   getCardSize() { return 8; }
 
-  static getStubConfig() { return { name: "Display tank" }; }
+  static getConfigElement() {
+    return document.createElement("aipai-reef-card-editor");
+  }
+
+  static getStubConfig() { return { name: "Reef tank" }; }
 
   set hass(hass) {
     this._hass = hass;
@@ -978,6 +982,171 @@ class AipaiReefCard extends HTMLElement {
       .unsaved .b.discard { border: 1px solid var(--secondary-text-color); }
     </style>`;
   }
+}
+
+// --- visual config editor -------------------------------------------------
+// A point-and-click editor so you never hand-type serials: tick which lights a
+// card shows. Ticking all (or none explicitly) means "all lights, including any
+// added later"; a subset pins the card to those serials.
+class AipaiReefCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._config = {};
+    this._hass = null;
+    this._built = false;
+    this._lightKey = "";
+  }
+
+  setConfig(config) {
+    this._config = Object.assign({}, config || {});
+    if (!this._built) this._build();
+    else this._sync();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    const key = this._lightsKey();
+    // Only rebuild when the set of available lights changes - never on every
+    // hass tick, or a rebuild would steal focus while you're typing the name.
+    if (!this._built || key !== this._lightKey) {
+      this._lightKey = key;
+      this._build();
+    }
+  }
+
+  _discovered() {
+    const out = [];
+    if (this._hass) {
+      for (const st of Object.values(this._hass.states)) {
+        const a = st.attributes || {};
+        if (a.aipai_kind === "schedule") {
+          out.push({
+            serial: String(a.aipai_serial),
+            model: a.model || "",
+            roads: a.roads || (a.labels || []).length,
+          });
+        }
+      }
+    }
+    out.sort((x, y) => x.serial.localeCompare(y.serial));
+    return out;
+  }
+
+  _lightsKey() {
+    return this._discovered().map((l) => l.serial).join(",");
+  }
+
+  _rows() {
+    const discovered = this._discovered();
+    const known = new Set(discovered.map((l) => l.serial));
+    const configured = Array.isArray(this._config.serials)
+      ? this._config.serials.map(String) : null;
+    // Show any configured-but-currently-missing serials too, so editing a card
+    // for an offline light doesn't silently drop it.
+    const extra = (configured || [])
+      .filter((s) => !known.has(s))
+      .map((s) => ({ serial: s, model: "", roads: 0, missing: true }));
+    return [...discovered, ...extra];
+  }
+
+  _build() {
+    const cfg = this._config;
+    const configured = Array.isArray(cfg.serials) ? cfg.serials.map(String) : null;
+    const rows = this._rows();
+    const checked = (s) => (configured === null ? true : configured.includes(s));
+    const esc = (s) => String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+    this.shadowRoot.innerHTML = `
+      <style>
+        .ed { display: flex; flex-direction: column; gap: 12px; padding: 4px 2px; }
+        .fld { display: flex; flex-direction: column; gap: 4px; }
+        .fld > span { font-size: .8rem; color: var(--secondary-text-color); }
+        input[type=text] { font-size: .95rem; padding: 8px 10px; border-radius: 8px;
+          border: 1px solid var(--divider-color); background: var(--card-background-color);
+          color: var(--primary-text-color); }
+        .lbl { font-size: .8rem; color: var(--secondary-text-color); }
+        .hint { font-size: .75rem; color: var(--secondary-text-color); }
+        .row { display: flex; align-items: center; gap: 10px; padding: 6px 0;
+          border-top: 1px solid var(--divider-color); cursor: pointer; }
+        .row input { width: 18px; height: 18px; }
+        .mono { font-family: monospace; }
+        .muted { color: var(--secondary-text-color); font-size: .8rem; margin-left: auto; }
+      </style>
+      <div class="ed">
+        <label class="fld"><span>Card name</span>
+          <input type="text" data-name value="${esc(cfg.name || "")}" placeholder="e.g. Frag tank"></label>
+        <div>
+          <div class="lbl">Which lights?</div>
+          <div class="hint" data-hint>${
+            configured === null
+              ? "All lights (new ones appear automatically)."
+              : "Only the ticked lights."}</div>
+        </div>
+        ${rows.length
+          ? rows.map((l) => `
+          <label class="row">
+            <input type="checkbox" data-serial="${esc(l.serial)}" ${checked(l.serial) ? "checked" : ""}>
+            <span class="mono">${esc(l.serial)}</span>
+            <span class="muted">${l.missing ? "(not found)" : esc(l.model) + (l.roads ? ` · ${l.roads} ch` : "")}</span>
+          </label>`).join("")
+          : `<div class="hint">No AIPAI lights found yet - add a light first.</div>`}
+      </div>`;
+
+    const name = this.shadowRoot.querySelector("[data-name]");
+    name.addEventListener("input", () => {
+      const v = name.value.trim();
+      if (v) this._config.name = v; else delete this._config.name;
+      this._emit();
+    });
+    this.shadowRoot.querySelectorAll("[data-serial]").forEach((cb) =>
+      cb.addEventListener("change", () => this._onToggle()));
+    this._built = true;
+  }
+
+  // Update values in place (no rebuild) so config-changed round-trips don't
+  // steal focus from the name field.
+  _sync() {
+    const name = this.shadowRoot.querySelector("[data-name]");
+    if (name && document.activeElement !== name && this.shadowRoot.activeElement !== name) {
+      name.value = this._config.name || "";
+    }
+    const configured = Array.isArray(this._config.serials)
+      ? this._config.serials.map(String) : null;
+    this.shadowRoot.querySelectorAll("[data-serial]").forEach((cb) => {
+      cb.checked = configured === null ? true : configured.includes(cb.dataset.serial);
+    });
+    const hint = this.shadowRoot.querySelector("[data-hint]");
+    if (hint) {
+      hint.textContent = configured === null
+        ? "All lights (new ones appear automatically)."
+        : "Only the ticked lights.";
+    }
+  }
+
+  _onToggle() {
+    const boxes = [...this.shadowRoot.querySelectorAll("[data-serial]")];
+    const selected = boxes.filter((b) => b.checked).map((b) => b.dataset.serial);
+    const discovered = this._discovered().map((l) => l.serial);
+    const allSelected = discovered.length > 0 &&
+      selected.length === discovered.length &&
+      discovered.every((s) => selected.includes(s));
+    if (allSelected) delete this._config.serials;   // "all", incl. future lights
+    else this._config.serials = selected;
+    this._sync();
+    this._emit();
+  }
+
+  _emit() {
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config: this._config }, bubbles: true, composed: true,
+    }));
+  }
+}
+
+if (!customElements.get("aipai-reef-card-editor")) {
+  customElements.define("aipai-reef-card-editor", AipaiReefCardEditor);
 }
 
 if (!customElements.get("aipai-reef-card")) {
