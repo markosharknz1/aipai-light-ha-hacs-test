@@ -167,6 +167,7 @@ class AipaiReefCard extends HTMLElement {
       const light = {
         entity: id,
         serial: String(a.aipai_serial),
+        name: a.aipai_name || `AIPAI Light ${a.aipai_serial}`,
         labels: a.labels || [],
         roads: a.roads || (a.labels || []).length,
         curves: a.curves || [],
@@ -177,11 +178,11 @@ class AipaiReefCard extends HTMLElement {
       out.push(light);
       // Remember it so it stays visible if it later drops offline.
       this._seen[light.serial] = {
-        entity: id, serial: light.serial, labels: light.labels,
+        entity: id, serial: light.serial, name: light.name, labels: light.labels,
         roads: light.roads, model: a.model || "",
       };
     }
-    out.sort((x, y) => x.serial.localeCompare(y.serial));
+    out.sort((x, y) => (x.name || x.serial).localeCompare(y.name || y.serial));
     return out;
   }
 
@@ -200,8 +201,8 @@ class AipaiReefCard extends HTMLElement {
       for (const s of want) {
         if (online.has(s)) continue;
         const seen = this._seen[s] || {};
-        extra.push({ serial: s, unavailable: true, labels: seen.labels || [],
-          roads: seen.roads || 0 });
+        extra.push({ serial: s, name: seen.name || `AIPAI Light ${s}`,
+          unavailable: true, labels: seen.labels || [], roads: seen.roads || 0 });
       }
     } else {
       // All-lights card: keep showing a seen light that dropped, as long as HA
@@ -209,14 +210,15 @@ class AipaiReefCard extends HTMLElement {
       for (const [s, info] of Object.entries(this._seen)) {
         if (online.has(s)) continue;
         if (this._hass && this._hass.states[info.entity]) {
-          extra.push({ serial: s, unavailable: true, labels: info.labels || [],
-            roads: info.roads || 0 });
+          extra.push({ serial: s, name: info.name || `AIPAI Light ${s}`,
+            unavailable: true, labels: info.labels || [], roads: info.roads || 0 });
         } else {
           delete this._seen[s];   // device genuinely gone
         }
       }
     }
-    return [...available, ...extra].sort((x, y) => x.serial.localeCompare(y.serial));
+    return [...available, ...extra].sort((x, y) =>
+      (x.name || x.serial).localeCompare(y.name || y.serial));
   }
 
   _slots() {
@@ -411,10 +413,11 @@ class AipaiReefCard extends HTMLElement {
   }
 
   _lightRow(l, sheeting) {
+    const title = l.name || `AIPAI Light ${l.serial}`;
     if (l.unavailable) {
       return `<div class="lite off">
         <div class="literow">
-          <div class="ttl"><div class="n sm">${this._esc(l.serial)}</div>
+          <div class="ttl"><div class="n sm">${this._esc(title)}</div>
             <div class="s">Unavailable — not reaching the cloud</div></div>
         </div></div>`;
     }
@@ -424,7 +427,7 @@ class AipaiReefCard extends HTMLElement {
     const modeTxt = l.mode === "1" ? "Scheduled" : "Manual";
     return `<div class="lite${cls}">
       <div class="literow">
-        <div class="ttl"><div class="n sm">${this._esc(l.serial)}${tag}</div>
+        <div class="ttl"><div class="n sm">${this._esc(title)}${tag}</div>
           <div class="s">${modeTxt}${t}</div></div>
       </div></div>`;
   }
@@ -1078,13 +1081,14 @@ class AipaiReefCardEditor extends HTMLElement {
         if (a.aipai_kind === "schedule") {
           out.push({
             serial: String(a.aipai_serial),
+            name: a.aipai_name || `AIPAI Light ${a.aipai_serial}`,
             model: a.model || "",
             roads: a.roads || (a.labels || []).length,
           });
         }
       }
     }
-    out.sort((x, y) => x.serial.localeCompare(y.serial));
+    out.sort((x, y) => (x.name || x.serial).localeCompare(y.name || y.serial));
     return out;
   }
 
@@ -1143,8 +1147,8 @@ class AipaiReefCardEditor extends HTMLElement {
           ? rows.map((l) => `
           <label class="row">
             <input type="checkbox" data-serial="${esc(l.serial)}" ${checked(l.serial) ? "checked" : ""}>
-            <span class="mono">${esc(l.serial)}</span>
-            <span class="muted">${l.missing ? "(not found)" : esc(l.model) + (l.roads ? ` · ${l.roads} ch` : "")}</span>
+            <span>${esc(l.name || l.serial)}</span>
+            <span class="muted">${l.missing ? "(not found)" : esc(l.serial) + (l.model ? ` · ${esc(l.model)}` : "") + (l.roads ? ` · ${l.roads} ch` : "")}</span>
           </label>`).join("")
           : `<div class="hint">No AIPAI lights found yet - add a light first.</div>`}
       </div>`;

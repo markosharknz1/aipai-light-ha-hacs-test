@@ -29,10 +29,13 @@ class AipaiLightHub:
 
     def __init__(
         self, hass: HomeAssistant, serial: str, model_hint: str | None = None,
-        poll_interval: int = POLL_INTERVAL,
+        poll_interval: int = POLL_INTERVAL, name: str | None = None,
     ) -> None:
         self.hass = hass
         self.serial = serial
+        # Friendly device name (from the config flow). The user can still rename
+        # the device in the HA UI afterwards - that override wins in the registry.
+        self.name = (name or "").strip() or f"AIPAI Light {serial}"
         self._poll_interval = max(10, int(poll_interval))
         self._connected = False
         self._last_reply = 0.0  # monotonic time of the last device reply
@@ -135,7 +138,7 @@ class AipaiLightHub:
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
             identifiers={(DOMAIN, self.serial)},
-            name=f"AIPAI Light {self.serial}",
+            name=self.name,
             manufacturer="AIPAI (Doseen)",
             model=self.state.model or "AIPAI Light",
             serial_number=self.serial,

@@ -16,6 +16,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, UnitOfTemperature
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
@@ -99,12 +100,26 @@ class AipaiScheduleSensor(SensorEntity):
     def native_value(self) -> str:
         return "scheduled" if self._hub.mode == "1" else "manual"
 
+    def _friendly_name(self) -> str:
+        """The device's effective name, so the card shows what the user renamed it
+        to - whether that was set in the config flow or the HA device page."""
+        try:
+            device = dr.async_get(self.hass).async_get_device(
+                identifiers={(DOMAIN, self._hub.serial)}
+            )
+            if device:
+                return device.name_by_user or device.name or self._hub.name
+        except Exception:  # noqa: BLE001
+            pass
+        return self._hub.name
+
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         st = self._hub.state
         return {
             "aipai_kind": "schedule",   # lets the designer find this entity
             "aipai_serial": self._hub.serial,
+            "aipai_name": self._friendly_name(),
             "model": st.model,
             "roads": self._hub.roads,
             "labels": self._hub.labels,

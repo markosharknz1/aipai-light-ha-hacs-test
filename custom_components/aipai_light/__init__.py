@@ -13,6 +13,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from .const import (
     CONF_DEVICE_TYPE,
     CONF_MODEL,
+    CONF_NAME,
     CONF_POLL_INTERVAL,
     CONF_SERIAL,
     DEFAULT_POLL_INTERVAL,
@@ -34,7 +35,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if device_type == DEVICE_TYPE_LIGHT:
         hub: AipaiLightHub | ExperimentalDeviceHub = AipaiLightHub(
-            hass, serial, model_hint=entry.data.get(CONF_MODEL) or None, poll_interval=poll
+            hass, serial, model_hint=entry.data.get(CONF_MODEL) or None,
+            poll_interval=poll, name=entry.data.get(CONF_NAME) or None,
         )
     else:
         hub = ExperimentalDeviceHub(hass, serial, device_type, poll_interval=poll)

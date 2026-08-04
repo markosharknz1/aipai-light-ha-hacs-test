@@ -3,8 +3,32 @@
     "step": {
       "user": {
         "title": "Add AIPAI device",
+        "description": "Search your network for lights, or add one by serial number.",
+        "menu_options": {
+          "search": "Search my network for lights",
+          "manual": "Enter a serial number manually"
+        }
+      },
+      "search": {
+        "title": "Search for lights",
+        "description": "Scanning your network for AIPAI lights. Detected subnet(s): {detected}. Leave as-is to scan your Home Assistant network, or enter one or more subnets (comma-separated, e.g. 10.42.1.0/24) to scan instead.",
+        "data": {
+          "subnet": "Subnet(s) to scan"
+        }
+      },
+      "pick": {
+        "title": "Choose a light",
+        "description": "These lights answered on your network. Pick one to add, and give it a name if you like (you can rename it later).",
+        "data": {
+          "serial": "Light found",
+          "name": "Name (optional, e.g. Display Tank)"
+        }
+      },
+      "manual": {
+        "title": "Add AIPAI device by serial",
         "description": "Enter the device's serial number (from the AIPAI app's device list, e.g. 12345678) and its type. Only 'Light' is verified against real hardware; the other types are experimental and unverified. Model is optional and applies to lights only.",
         "data": {
+          "name": "Name (optional, e.g. Display Tank)",
           "serial": "Device serial number",
           "device_type": "Device type",
           "model": "Light model (optional, e.g. A8-SE8)"
@@ -12,7 +36,11 @@
       }
     },
     "error": {
-      "invalid_serial": "Serial number should be digits only."
+      "invalid_serial": "Serial number should be digits only.",
+      "no_subnet": "Enter at least one subnet to scan, e.g. 10.42.1.0/24.",
+      "none_found": "No lights answered on that network. Make sure the lights are powered on and on the same network, then try again — or add one by serial.",
+      "all_configured": "Found only lights that are already added.",
+      "unknown": "That light is no longer available; please scan again."
     },
     "abort": {
       "already_configured": "This device is already configured."

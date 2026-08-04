@@ -21,6 +21,8 @@ CONF_SERIAL = "serial"
 CONF_MODEL = "model"
 CONF_DEVICE_TYPE = "device_type"
 CONF_POLL_INTERVAL = "poll_interval"
+CONF_NAME = "name"
+CONF_SUBNET = "subnet"
 
 DEFAULT_POLL_INTERVAL = 45  # seconds
 
