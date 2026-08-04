@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 import time
 from collections.abc import Callable
 from typing import Any
@@ -31,7 +32,16 @@ class AipaiMqttClient:
         self._on_message = on_message
         self._on_connection_change = on_connection_change
 
-        client_id = f"A8SE8-{serial}-MOB"
+        # Use a client id UNIQUE to this HA connection. The vendor app connects
+        # as "A8SE8-<serial>-MOB"; MQTT allows only one connection per client id,
+        # so if HA used that same id the broker would kick whichever connected
+        # second - HA and the app endlessly evicting each other. That is exactly
+        # the "the light appears then drops off" symptom, and it bites whichever
+        # light you currently have open in the app. A per-connection random
+        # suffix means HA never collides with the app (or another HA, or a probe).
+        # The device replies to light/<serial>/dev for ANY requester and accepts
+        # commands on light/<serial>/mob from anyone, so the id can be anything.
+        client_id = f"A8SE8-{serial}-HA-{secrets.token_hex(3)}"
         self._client = mqtt.Client(client_id=client_id, transport="websockets")
         self._client.ws_set_options(path=MQTT_WS_PATH)
         self._client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
