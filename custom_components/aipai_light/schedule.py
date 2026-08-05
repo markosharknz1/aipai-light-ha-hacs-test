@@ -174,6 +174,23 @@ def clock_epoch(now: float, ha_offset_seconds: float, dev_offset_hours: int) -> 
     return int(now + ha_offset_seconds - int(dev_offset_hours) * 3600)
 
 
+def clock_needs_resync(
+    current_offset: float | None,
+    last_offset: float | None,
+    seconds_since_sync: float,
+    resync_interval: float,
+) -> bool:
+    """Whether to re-send the device clock now.
+
+    True if the UTC offset has changed since the last sync (a DST changeover, or
+    the half-hour Adelaide flip - correct it within the hour) or a periodic
+    re-sync is due (drift). A first-ever sync (last_offset is None) isn't treated
+    as a "change" - only the periodic path fires it.
+    """
+    changed = last_offset is not None and current_offset != last_offset
+    return bool(changed or seconds_since_sync >= resync_interval)
+
+
 def night_hours(start_hour: int, end_hour: int) -> list[int]:
     """Whole hours a night window covers, inclusive of start, exclusive of end.
 

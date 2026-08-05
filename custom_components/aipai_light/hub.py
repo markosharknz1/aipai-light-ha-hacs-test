@@ -20,8 +20,9 @@ from .protocol import LightState, build_saveconfig, cmd_to_pct, parse_readconfig
 
 _LOGGER = logging.getLogger(__name__)
 
-POLL_INTERVAL = 45          # default seconds between readconfig polls
-CLOCK_INTERVAL = 6 * 3600   # re-sync the device clock this often (drift + DST)
+POLL_INTERVAL = 45              # default seconds between readconfig polls
+CLOCK_CHECK_INTERVAL = 3600    # check the UTC offset this often (catches DST fast)
+CLOCK_RESYNC_INTERVAL = 6 * 3600  # force a clock re-sync at least this often (drift)
 
 
 class AipaiLightHub:
@@ -41,6 +42,8 @@ class AipaiLightHub:
         self._last_reply = 0.0  # monotonic time of the last device reply
         self._poll_unsub = None
         self._clock_unsub = None
+        self._last_offset: float | None = None   # UTC offset at the last clock sync
+        self._last_clock_sync = 0.0              # monotonic time of the last sync
         self.last_ack: dict[str, Any] | None = None  # last saveconfig/clock/moon ack
 
         # Best-effort defaults until the first readconfig arrives.
@@ -83,7 +86,7 @@ class AipaiLightHub:
             self.hass, self._async_poll, timedelta(seconds=self._poll_interval)
         )
         self._clock_unsub = async_track_time_interval(
-            self.hass, self._async_clock_tick, timedelta(seconds=CLOCK_INTERVAL)
+            self.hass, self._async_clock_tick, timedelta(seconds=CLOCK_CHECK_INTERVAL)
         )
 
     async def async_disconnect(self) -> None:
@@ -94,8 +97,29 @@ class AipaiLightHub:
         await self.hass.async_add_executor_job(self.client.disconnect)
 
     async def _async_clock_tick(self, _now) -> None:  # noqa: ANN001
-        if self._connected:
+        """Hourly: re-sync if the UTC offset changed (DST) or a full re-sync is due.
+
+        Catching an offset change means a DST changeover (or the half-hour Adelaide
+        transition) is corrected within the hour instead of waiting up to 6h - and
+        we only send an extra command on the day it actually changes.
+        """
+        if not self._connected:
+            return
+        from .schedule import clock_needs_resync
+
+        offset = self._current_offset()
+        elapsed = time.monotonic() - self._last_clock_sync
+        if clock_needs_resync(offset, self._last_offset, elapsed, CLOCK_RESYNC_INTERVAL):
+            _LOGGER.debug(
+                "clock sync for %s (offset now=%s, was=%s, elapsed=%ds)",
+                self.serial, offset, self._last_offset, int(elapsed),
+            )
             self.auto_sync_clock()
+
+    @staticmethod
+    def _current_offset() -> float | None:
+        off = dt_util.now().utcoffset()
+        return off.total_seconds() if off is not None else None
 
     def _compensated_epoch(self) -> int:
         """Epoch that makes the device show HA's local time.
@@ -118,6 +142,10 @@ class AipaiLightHub:
     def auto_sync_clock(self) -> None:
         """Keep the device clock right automatically (no vendor-app popup needed)."""
         self.client.sync_clock(self._compensated_epoch())
+        # Remember the offset/time we just synced for, so the hourly tick can tell
+        # when DST (or the half-hour Adelaide flip) has changed it.
+        self._last_offset = self._current_offset()
+        self._last_clock_sync = time.monotonic()
 
     def request_refresh(self) -> None:
         self.client.request_state()
