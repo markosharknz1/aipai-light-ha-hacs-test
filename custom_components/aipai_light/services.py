@@ -259,14 +259,21 @@ def async_register_services(hass: HomeAssistant) -> None:
 
     async def handle_set_night_light(call: ServiceCall) -> None:
         serial = call.data.get("serial")
+        enable = call.data["enable"]
         for hub in _light_hubs(hass, serial):
-            channels = call.data.get("channels") or hub.blue_channels()
+            if enable:
+                channels = call.data.get("channels") or hub.blue_channels()
+            else:
+                # Turning OFF must fully clear the window - not just the ticked
+                # channels - or channels lit by an earlier (all-channel) apply
+                # would stay on and the tank never goes dark.
+                channels = list(range(hub.state.roads_real))
             hub.apply_night_light(
                 start_hour=_hour_of(call.data["start"]),
                 end_hour=_hour_of(call.data["end"]),
                 level_pct=call.data["level"],
                 channels=channels,
-                enable=call.data["enable"],
+                enable=enable,
             )
 
     async def handle_generate_dashboard(call: ServiceCall) -> dict[str, Any]:

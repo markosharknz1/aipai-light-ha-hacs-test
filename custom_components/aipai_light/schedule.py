@@ -185,19 +185,24 @@ def overlay_night(
 ) -> list[list[int]]:
     """Lay a simulated moonlight over existing 24h curves.
 
-    For each selected channel, across the night window (which may wrap midnight),
-    raise the level to `level` (never dimming a brighter daytime value) when
-    enabling, or clear it to 0 when disabling. Other channels/hours are
-    untouched. This is how moonlight is done for models with no native moon
-    timer - it's just the ordinary schedule, so it works on every light.
+    The night window (which may wrap midnight) is **fully replaced**: the chosen
+    channels are set to `level`, and every other channel in that window is set to
+    0. Hours outside the window are untouched. So each apply is authoritative -
+    re-applying with a different level, different channels, or Off cleanly
+    replaces the last one instead of stacking on top of it. This is how moonlight
+    is done for models with no native moon timer - it's just the ordinary
+    schedule, so it works on every light.
+
+    (The window is meant for night hours, where the day schedule is already dark,
+    so replacing rather than max-ing doesn't clip a daytime ramp in practice.)
     """
     hours = set(night_hours(start_hour, end_hour))
     lvl = _clamp_level(_safe_int(level))
+    lit = set(channels) if enable else set()
     out = [validate_curve(row) for row in curves]
-    for c in channels:
-        if 0 <= c < len(out):
-            for h in hours:
-                out[c][h] = max(out[c][h], lvl) if enable else 0
+    for c in range(len(out)):
+        for h in hours:
+            out[c][h] = lvl if c in lit else 0
     return out
 
 
