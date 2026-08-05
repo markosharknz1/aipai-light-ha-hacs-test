@@ -161,6 +161,19 @@ def curve_to_csv(curve: list[int]) -> str:
     return ",".join(str(v) for v in curve)
 
 
+def clock_epoch(now: float, ha_offset_seconds: float, dev_offset_hours: int) -> int:
+    """Epoch to send so the device shows Home Assistant's local time.
+
+    The device treats the epoch as UTC and adds its stored, WHOLE-HOUR timezone
+    to display local time. Half-hour zones (e.g. Adelaide, UTC+9:30) can't be
+    stored in whole hours, so we bake the difference into the epoch: the device's
+    displayed time is ``epoch + dev_offset``, and we want that to equal
+    ``now + ha_offset`` - hence ``epoch = now + ha_offset - dev_offset``. Works
+    for any device tz value and any real offset (including :30 and DST).
+    """
+    return int(now + ha_offset_seconds - int(dev_offset_hours) * 3600)
+
+
 def night_hours(start_hour: int, end_hour: int) -> list[int]:
     """Whole hours a night window covers, inclusive of start, exclusive of end.
 

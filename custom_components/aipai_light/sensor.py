@@ -113,6 +113,19 @@ class AipaiScheduleSensor(SensorEntity):
             pass
         return self._hub.name
 
+    def _night_attr(self) -> dict[str, Any]:
+        """Current night-light config, in the shape the card's sheet expects."""
+        cfg = self._hub.night_config
+        if not cfg or not cfg.get("enable"):
+            return {"enable": False}
+        return {
+            "enable": True,
+            "start": f"{int(cfg['start_hour']):02d}:00",
+            "end": f"{int(cfg['end_hour']):02d}:00",
+            "level": cfg.get("level", 10),
+            "channels": list(cfg.get("channels", [])),
+        }
+
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         st = self._hub.state
@@ -121,6 +134,7 @@ class AipaiScheduleSensor(SensorEntity):
             "aipai_serial": self._hub.serial,
             "aipai_name": self._friendly_name(),
             "aipai_moon_capable": self._hub.moon_capable,
+            "aipai_night": self._night_attr(),
             "model": st.model,
             "roads": self._hub.roads,
             "labels": self._hub.labels,

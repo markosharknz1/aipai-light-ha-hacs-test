@@ -57,6 +57,10 @@ class AipaiLightHub:
         self._restore: list[int] = [pct_to_cmd(50)] * self.state.roads
 
         self._entities: list[Any] = []
+        # Simulated night light (moonlight) - remembered so a re-apply can clear
+        # the old window and the card can show the current settings.
+        self.night_config: dict[str, Any] | None = None
+        self._night_store = None
         # Timed lights-off state.
         self._off_store = None
         self._off_unsub = None
@@ -93,22 +97,27 @@ class AipaiLightHub:
         if self._connected:
             self.auto_sync_clock()
 
-    def auto_sync_clock(self) -> None:
-        """Keep the device clock right automatically (no vendor-app popup needed).
+    def _compensated_epoch(self) -> int:
+        """Epoch that makes the device show HA's local time.
 
-        Sends an epoch chosen so the device's *local* time matches Home
-        Assistant's current local time, including DST. The device applies its
-        stored (non-DST) UTC offset, so we compensate here rather than rewriting
-        the timezone (which would need a saveconfig and force the light on).
+        Compensates for the device storing only a WHOLE-HOUR timezone, so
+        half-hour zones (e.g. Adelaide UTC+9:30) and DST come out right. Falls
+        back to raw UTC only before the first state read (device tz unknown).
         """
+        from .schedule import clock_epoch
+
         now = time.time()
-        epoch = int(now)
         if self.has_state:
             ha_offset = dt_util.now().utcoffset()
             if ha_offset is not None:
-                dev_offset = _safe_int(self.state.timezone) * 3600
-                epoch = int(now + ha_offset.total_seconds() - dev_offset)
-        self.client.sync_clock(epoch)
+                return clock_epoch(
+                    now, ha_offset.total_seconds(), _safe_int(self.state.timezone)
+                )
+        return int(now)
+
+    def auto_sync_clock(self) -> None:
+        """Keep the device clock right automatically (no vendor-app popup needed)."""
+        self.client.sync_clock(self._compensated_epoch())
 
     def request_refresh(self) -> None:
         self.client.request_state()
@@ -302,8 +311,10 @@ class AipaiLightHub:
     # -- time / schedule / moon -------------------------------------------
 
     def sync_clock(self, epoch: int | None = None) -> None:
-        """Set device clock to a UTC epoch (defaults to real current time)."""
-        self.client.sync_clock(epoch)
+        """Set the device clock. With no epoch, compute the compensated one so the
+        manual SYNC CLOCK matches auto-sync (correct on half-hour zones like
+        Adelaide) instead of sending raw UTC."""
+        self.client.sync_clock(epoch if epoch is not None else self._compensated_epoch())
 
     def apply_preset(self, preset: dict[str, Any]) -> bool:
         """Apply a named preset (see presets.py) to this fixture.
@@ -418,12 +429,53 @@ class AipaiLightHub:
         for row in self.state.road_data:
             vals = [_safe_int(x) for x in str(row).split(",") if x != ""]
             rows.append((vals + [0] * 24)[:24])
+
+        # Clear the PREVIOUS night window first (all channels), so changing the
+        # time/window doesn't leave the old hours lit on the device.
+        prev = self.night_config
+        if prev and prev.get("enable"):
+            rows = overlay_night(rows, prev["start_hour"], prev["end_hour"], [], 0, False)
+
         merged = overlay_night(rows, start_hour, end_hour, channels, level_pct, enable)
         _LOGGER.debug(
             "WRITE %s night_light %02d:00-%02d:00 level=%d ch=%s enable=%s",
             self.serial, int(start_hour) % 24, int(end_hour) % 24, level_pct, channels, enable,
         )
-        return self.apply_schedule(road_data=[curve_to_csv(r) for r in merged])
+        ok = self.apply_schedule(road_data=[curve_to_csv(r) for r in merged])
+
+        # Remember what we applied so the next change can clear it and the card
+        # can show it.
+        self.night_config = (
+            {
+                "enable": True,
+                "start_hour": int(start_hour) % 24,
+                "end_hour": int(end_hour) % 24,
+                "level": int(level_pct),
+                "channels": list(channels),
+            }
+            if enable
+            else None
+        )
+        self._persist_night()
+        return ok
+
+    def attach_night_store(self, store) -> None:  # noqa: ANN001
+        """Wire up night-light persistence and restore any saved config."""
+        self._night_store = store
+        saved = store.get(self.serial)
+        if saved:
+            self.night_config = saved
+
+    def _persist_night(self) -> None:
+        if self._night_store is None:
+            return
+        cfg = self.night_config
+        coro = (
+            self._night_store.async_set(self.serial, cfg)
+            if cfg
+            else self._night_store.async_clear(self.serial)
+        )
+        self.hass.async_create_task(coro)
 
     def blue_channels(self) -> list[int]:
         """Channel indices whose label looks like blue - the moonlight default."""

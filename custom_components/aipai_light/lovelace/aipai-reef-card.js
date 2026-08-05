@@ -170,6 +170,7 @@ class AipaiReefCard extends HTMLElement {
         serial: String(a.aipai_serial),
         name: a.aipai_name || `AIPAI Light ${a.aipai_serial}`,
         moonCapable: a.aipai_moon_capable !== false,   // absent (older backend) = assume yes
+        night: a.aipai_night || null,                  // current night-light config
         labels: a.labels || [],
         roads: a.roads || (a.labels || []).length,
         curves: a.curves || [],
@@ -621,7 +622,11 @@ class AipaiReefCard extends HTMLElement {
   _onAct(act) {
     const toggle = (name) => { this._ui.sheet = this._ui.sheet === name ? null : name; };
     if (act === "sched") { this._ensureDraft(); toggle("sched"); this._ui.sel = 0; }
-    else if (act === "night") { this._openNight(this._labels(this._lights())); toggle("night"); }
+    else if (act === "night") {
+      const lights = this._lights();
+      this._openNight(this._labels(lights), lights[0] && lights[0].night);
+      toggle("night");
+    }
     else if (act === "share") { toggle("share"); this._ui.shareMsg = ""; }
     else if (act === "save") { toggle("save"); }
     else if (act === "clock") { this._call("sync_clock", {}); }
@@ -780,8 +785,17 @@ class AipaiReefCard extends HTMLElement {
 
   // Night light (simulated moonlight): a low overnight level baked into the
   // ordinary schedule, so it works on every model - not the native moon timer.
-  _openNight(labels) {
+  _openNight(labels, current) {
     if (this._ui.night) return;   // keep in-progress edits if re-opening
+    // Prefill from what's actually applied, so the sheet shows the real settings
+    // (not stale defaults) and edits change that rather than starting fresh.
+    if (current && current.enable) {
+      this._ui.night = {
+        on: true, start: current.start || "19:00", end: current.end || "07:00",
+        level: current.level ?? 10, ch: new Set(current.channels || []),
+      };
+      return;
+    }
     const blue = [];
     (labels || []).forEach((l, i) => {
       if (String(l).toLowerCase().includes("blue")) blue.push(i);

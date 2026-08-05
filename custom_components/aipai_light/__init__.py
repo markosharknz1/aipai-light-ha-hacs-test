@@ -60,6 +60,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if pending:
             await hub.async_restore_off(pending)
 
+        from .night_store import async_get_night_store
+
+        hub.attach_night_store(await async_get_night_store(hass))
+
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
