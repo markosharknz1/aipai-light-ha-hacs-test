@@ -451,28 +451,13 @@ class AipaiLightHub:
         if not self.has_state:
             _LOGGER.warning("apply_night_light skipped for %s: no state read yet", self.serial)
             return False
-        from .schedule import curve_to_csv, overlay_night
+        from .schedule import curve_to_csv
 
-        rows: list[list[int]] = []
-        for row in self.state.road_data:
-            vals = [_safe_int(x) for x in str(row).split(",") if x != ""]
-            rows.append((vals + [0] * 24)[:24])
-
-        # Clear the PREVIOUS night window first (all channels), so changing the
-        # time/window doesn't leave the old hours lit on the device.
-        prev = self.night_config
-        if prev and prev.get("enable"):
-            rows = overlay_night(rows, prev["start_hour"], prev["end_hour"], [], 0, False)
-
-        merged = overlay_night(rows, start_hour, end_hour, channels, level_pct, enable)
-        _LOGGER.debug(
-            "WRITE %s night_light %02d:00-%02d:00 level=%d ch=%s enable=%s",
-            self.serial, int(start_hour) % 24, int(end_hour) % 24, level_pct, channels, enable,
-        )
-        ok = self.apply_schedule(road_data=[curve_to_csv(r) for r in merged])
-
-        # Remember what we applied so the next change can clear it and the card
-        # can show it.
+        # Rebuild from the clean daytime layer, so this write is exactly the day
+        # schedule plus the current night light - any earlier night residue (from
+        # other windows/channels/levels) is wiped, not stacked on.
+        day = self._day_base()
+        self.day_curves = day                 # lock in the base we rebuilt from
         self.night_config = (
             {
                 "enable": True,
@@ -484,26 +469,79 @@ class AipaiLightHub:
             if enable
             else None
         )
+        merged = self._compose(day)
+        _LOGGER.debug(
+            "WRITE %s night_light %02d:00-%02d:00 level=%d ch=%s enable=%s",
+            self.serial, int(start_hour) % 24, int(end_hour) % 24, level_pct, channels, enable,
+        )
+        ok = self.apply_schedule(road_data=[curve_to_csv(r) for r in merged])
         self._persist_night()
+        self._persist_day()
         return ok
 
     def attach_night_store(self, store) -> None:  # noqa: ANN001
-        """Wire up night-light persistence and restore any saved config."""
+        """Wire up schedule-layer persistence and restore the saved layers."""
         self._night_store = store
-        saved = store.get(self.serial)
+        saved = store.get_night(self.serial)
         if saved:
             self.night_config = saved
+        day = store.get_day(self.serial)
+        if day:
+            self.day_curves = [list(c) for c in day]
 
     def _persist_night(self) -> None:
         if self._night_store is None:
             return
         cfg = self.night_config
         coro = (
-            self._night_store.async_set(self.serial, cfg)
+            self._night_store.async_set_night(self.serial, cfg)
             if cfg
-            else self._night_store.async_clear(self.serial)
+            else self._night_store.async_clear_night(self.serial)
         )
         self.hass.async_create_task(coro)
+
+    def _persist_day(self) -> None:
+        if self._night_store is not None and self.day_curves is not None:
+            self.hass.async_create_task(
+                self._night_store.async_set_day(self.serial, self.day_curves)
+            )
+
+    def _device_rows(self) -> list[list[int]]:
+        """Current on-device curves as int rows (per firmware road)."""
+        rows: list[list[int]] = []
+        for row in self.state.road_data:
+            vals = [_safe_int(x) for x in str(row).split(",") if x != ""]
+            rows.append((vals + [0] * 24)[:24])
+        return rows
+
+    def _day_base(self) -> list[list[int]]:
+        """The daytime layer to build on.
+
+        Prefer the stored clean day layer (captured from the schedule editor). If
+        we don't have one yet, reconstruct it from the device by clearing the
+        tracked night window - correct once a clean baseline exists.
+        """
+        from .schedule import overlay_night
+
+        if self.day_curves is not None:
+            return [list(c) for c in self.day_curves]
+        rows = self._device_rows()
+        prev = self.night_config
+        if prev and prev.get("enable"):
+            rows = overlay_night(rows, prev["start_hour"], prev["end_hour"], [], 0, False)
+        return rows
+
+    def _compose(self, day: list[list[int]]) -> list[list[int]]:
+        """Full device curves = the day layer with the night light laid over it."""
+        from .schedule import overlay_night
+
+        cfg = self.night_config
+        if cfg and cfg.get("enable"):
+            return overlay_night(
+                day, cfg["start_hour"], cfg["end_hour"],
+                cfg["channels"], cfg["level"], True,
+            )
+        return [list(c) for c in day]
 
     def blue_channels(self) -> list[int]:
         """Channel indices whose label looks like blue - the moonlight default."""
@@ -536,15 +574,20 @@ class AipaiLightHub:
         immediate by design - the whole reason to preview is to judge it in the
         water. Roll-back safety comes from the saved baseline in draft_store.
         """
-        from .schedule import build_curves_from_points
+        from .schedule import build_curves_from_points, curve_to_csv
 
         if not self.has_state:
             _LOGGER.warning("apply_points skipped for %s: no state read yet", self.serial)
             return False
         _LOGGER.debug("WRITE %s apply_points (preview) %d points -> AUTO mode",
                       self.serial, len(points))
-        curves = build_curves_from_points(points, self.state.roads_real)
-        rows = [",".join(str(v) for v in c) for c in curves]
+        # These points ARE the daytime layer (the editor edits the day layer, not
+        # the composed curves). Capture it clean, then write day + night light so
+        # editing the day schedule keeps the night light instead of wiping it.
+        day = build_curves_from_points(points, self.state.roads_real)
+        self.day_curves = [list(c) for c in day]
+        self._persist_day()
+        rows = [curve_to_csv(c) for c in self._compose(day)]
         return self.apply_schedule(road_data=rows, mode="1")
 
     def restore_snapshot(self, snapshot: dict[str, Any]) -> bool:

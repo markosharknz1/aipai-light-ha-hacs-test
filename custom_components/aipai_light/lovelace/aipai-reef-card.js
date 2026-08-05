@@ -174,6 +174,7 @@ class AipaiReefCard extends HTMLElement {
         labels: a.labels || [],
         roads: a.roads || (a.labels || []).length,
         curves: a.curves || [],
+        dayCurves: a.aipai_day_curves || null,   // day layer (night light excluded)
         moon: a.moon || {},
         mode: a.mode,
         temperature: a.temperature,
@@ -262,7 +263,18 @@ class AipaiReefCard extends HTMLElement {
     if (this._draft) return this._draft.points;
     const base = lights[0];
     if (!base || !base.curves.length) return [];
-    return pointsToKeyframes(curvesToPoints(base.curves));
+    return pointsToKeyframes(curvesToPoints(base.curves));   // composed (day+night)
+  }
+
+  // Keyframes for the schedule EDITOR: the day layer only (night light excluded),
+  // so editing the day schedule doesn't drag the night light in. Falls back to
+  // the composed curves for older backends that don't expose the day layer.
+  _dayPoints(lights) {
+    const base = lights[0];
+    const src = (base && base.dayCurves && base.dayCurves.length) ? base.dayCurves
+              : (base && base.curves) || [];
+    if (!src.length) return [];
+    return pointsToKeyframes(curvesToPoints(src));
   }
 
   _labels(lights) {
@@ -604,7 +616,7 @@ class AipaiReefCard extends HTMLElement {
   _ensureDraft() {
     if (this._draft) return;
     const lights = this._lights();
-    const points = this._points(lights).map((p) => ({ h: p.h, ch: [...p.ch] }));
+    const points = this._dayPoints(lights).map((p) => ({ h: p.h, ch: [...p.ch] }));
     this._draft = {
       points,
       moon: { ...((lights[0] && lights[0].moon) || {}) },

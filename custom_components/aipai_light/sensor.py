@@ -144,6 +144,12 @@ class AipaiScheduleSensor(SensorEntity):
             "timezone": st.timezone,
             "temperature": st.temperature,
             "curves": _rows_to_curves(st.road_data, self._hub.roads),
+            # The daytime layer alone (night light excluded), so the schedule
+            # editor edits the day schedule without the night light bleeding in.
+            "aipai_day_curves": (
+                [list(c)[:24] for c in self._hub.day_curves[: self._hub.roads]]
+                if self._hub.day_curves else None
+            ),
             "moon": self._hub.moon,
             "last_command": self._hub.last_ack,
             "off_until": self._hub.off_until.isoformat() if self._hub.off_until else None,
