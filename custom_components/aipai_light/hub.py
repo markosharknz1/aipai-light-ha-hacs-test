@@ -60,8 +60,9 @@ class AipaiLightHub:
         self._restore: list[int] = [pct_to_cmd(50)] * self.state.roads
 
         self._entities: list[Any] = []
-        # Simulated night light (moonlight) - remembered so a re-apply can clear
-        # the old window and the card can show the current settings.
+        # Schedule layers: the daytime curves (from the editor) and the night
+        # light config, kept apart so every save rebuilds device = day + night.
+        self.day_curves: list[list[int]] | None = None
         self.night_config: dict[str, Any] | None = None
         self._night_store = None
         # Timed lights-off state.
