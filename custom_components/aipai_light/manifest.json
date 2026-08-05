@@ -7,7 +7,8 @@
   "config_flow": true,
   "dependencies": [
     "http",
-    "frontend"
+    "frontend",
+    "network"
   ],
   "documentation": "https://github.com/markosharknz1/ha-aipai-light",
   "iot_class": "cloud_polling",
@@ -15,5 +16,5 @@
   "requirements": [
     "paho-mqtt>=1.6.1"
   ],
-  "version": "0.8.0"
+  "version": "0.8.1"
 }
