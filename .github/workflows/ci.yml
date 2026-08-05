@@ -10,7 +10,7 @@ jobs:
     name: Home Assistant manifest (hassfest)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: home-assistant/actions/hassfest@master
 
   hacs:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     # This repo is public, so HACS can read file contents — blocking on purpose.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: hacs/action@main
         with:
           category: integration
