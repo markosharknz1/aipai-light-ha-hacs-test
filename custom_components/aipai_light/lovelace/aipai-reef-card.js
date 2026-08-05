@@ -168,6 +168,7 @@ class AipaiReefCard extends HTMLElement {
         entity: id,
         serial: String(a.aipai_serial),
         name: a.aipai_name || `AIPAI Light ${a.aipai_serial}`,
+        moonCapable: a.aipai_moon_capable !== false,   // absent (older backend) = assume yes
         labels: a.labels || [],
         roads: a.roads || (a.labels || []).length,
         curves: a.curves || [],
@@ -404,7 +405,7 @@ class AipaiReefCard extends HTMLElement {
         ${visible.map((l) => this._lightRow(l, sheeting)).join("")}
         <div class="ftr">
           <span class="btn" data-act="sched">EDIT SCHEDULE</span>
-          <span class="btn" data-act="moon">MOONLIGHT</span>
+          ${lights.some((l) => l.moonCapable) ? `<span class="btn" data-act="moon">MOONLIGHT</span>` : ""}
           <span class="btn" data-act="share">IMPORT / EXPORT</span>
           <span class="btn" data-act="clock">SYNC CLOCK</span>
         </div>

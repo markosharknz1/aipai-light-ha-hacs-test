@@ -87,9 +87,22 @@ MODEL_TABLE: dict[str, tuple[int, list[str]]] = {
 }
 
 
+# Models WITHOUT a moonlight feature. Moonlight is an A8-class feature; the
+# vendor app itself refuses it ("not open") on the A7-S line. Verified: A8-SE8
+# HAS moon, A7S6 does NOT. Anything not listed here is assumed moon-capable, so
+# this only suppresses the control where we KNOW it does nothing - extend as
+# other models are confirmed.
+MODELS_WITHOUT_MOON = {"A7S2", "A7S6"}
+
+
 def normalize_model(model: str) -> str:
     """Normalize a model string for MODEL_TABLE lookup (strip dashes/spaces, upper)."""
     return (model or "").upper().replace("-", "").replace(" ", "").strip()
+
+
+def model_has_moon(model: str) -> bool:
+    """Whether a model supports the native moonlight timer (best-effort)."""
+    return normalize_model(model) not in MODELS_WITHOUT_MOON
 
 
 def resolve_model(model: str, roads_from_length: int) -> tuple[int, list[str]]:

@@ -120,6 +120,7 @@ class AipaiScheduleSensor(SensorEntity):
             "aipai_kind": "schedule",   # lets the designer find this entity
             "aipai_serial": self._hub.serial,
             "aipai_name": self._friendly_name(),
+            "aipai_moon_capable": self._hub.moon_capable,
             "model": st.model,
             "roads": self._hub.roads,
             "labels": self._hub.labels,

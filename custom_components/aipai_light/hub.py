@@ -131,6 +131,13 @@ class AipaiLightHub:
         return self.state.roads
 
     @property
+    def moon_capable(self) -> bool:
+        """Whether this model has a moonlight timer (A7-S line does not)."""
+        from .const import model_has_moon
+
+        return model_has_moon(self.state.model or "")
+
+    @property
     def labels(self) -> list[str]:
         return self.state.labels
 
