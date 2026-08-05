@@ -111,7 +111,8 @@ class AipaiReefCard extends HTMLElement {
     this._hass = null;
     this._config = {};
     this._ui = {
-      sheet: null,          // "sched" | "moon" | "share" | "save" | "preset" | null
+      sheet: null,          // "sched" | "night" | "share" | "save" | "preset" | null
+      night: null,          // in-progress night-light config while its sheet is open
       sel: 0,               // selected time point
       focusCh: null,
       dragging: false,      // suppress re-render mid-drag
@@ -368,7 +369,7 @@ class AipaiReefCard extends HTMLElement {
     const labels = this._labels(lights);
     const points = this._points(lights);
     const slots = this._slots();
-    const sheeting = this._ui.sheet === "sched" || this._ui.sheet === "moon" || this._ui.sheet === "share";
+    const sheeting = this._ui.sheet === "sched" || this._ui.sheet === "share";
     const sel = Math.min(this._ui.sel, Math.max(0, points.length - 1));
     const temps = lights.map((l) => l.temperature).filter((t) => typeof t === "number");
     const avg = temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : "–";
@@ -405,7 +406,7 @@ class AipaiReefCard extends HTMLElement {
         ${visible.map((l) => this._lightRow(l, sheeting)).join("")}
         <div class="ftr">
           <span class="btn" data-act="sched">EDIT SCHEDULE</span>
-          ${lights.some((l) => l.moonCapable) ? `<span class="btn" data-act="moon">MOONLIGHT</span>` : ""}
+          <span class="btn" data-act="night">NIGHT LIGHT</span>
           <span class="btn" data-act="share">IMPORT / EXPORT</span>
           <span class="btn" data-act="clock">SYNC CLOCK</span>
         </div>
@@ -476,18 +477,23 @@ class AipaiReefCard extends HTMLElement {
           <span class="lbl">${P.length} points · on the hour · fades between them</span></div>
       </div>`;
     }
-    if (s === "moon") {
-      const on = !!(moon.run || moon.enabled);
-      return `<div class="sheet"><div class="q">Moonlight</div>
+    if (s === "night") {
+      const nt = this._ui.night || {};
+      const chSet = nt.ch || new Set();
+      return `<div class="sheet"><div class="q">Night light</div>
+        <div class="hint">A low level on the chosen channels overnight, saved into the
+          schedule (works on any model). Re-apply if you change the day schedule.</div>
         <div class="row wrap">
-          <span class="chip mini${on ? " on" : ""}" data-mn="toggle">${on ? "On" : "Off"}</span>
-          <span class="lbl">from</span><input type="time" class="timein" data-mn2="start" value="${this._moonStr(moon.start)}">
-          <span class="lbl">to</span><input type="time" class="timein" data-mn2="end" value="${this._moonStr(moon.end)}">
+          <span class="chip mini${nt.on ? " on" : ""}" data-nt="toggle">${nt.on ? "On" : "Off"}</span>
+          <span class="lbl">from</span><input type="time" class="timein" data-nt2="start" value="${nt.start || "19:00"}">
+          <span class="lbl">to</span><input type="time" class="timein" data-nt2="end" value="${nt.end || "07:00"}">
         </div>
         <div class="row wrap"><span class="lbl">Level</span>
-          <span class="step"><button data-mlvl="-1">−</button><span class="qty">${clamp100(moon.level)} %</span><button data-mlvl="1">+</button></span></div>
-        <div class="row"><span class="chip mini" data-mn="apply">Apply</span>
-          <span class="chip mini" data-mn="cancel">Cancel</span></div>
+          <span class="step"><button data-ntlvl="-1">−</button><span class="qty">${clamp100(nt.level)} %</span><button data-ntlvl="1">+</button></span></div>
+        <div class="row wrap"><span class="lbl">Channels</span>
+          ${labels.map((lab, ci) => `<span class="chip mini${chSet.has(ci) ? " on" : ""}" data-ntch="${ci}">${this._esc(lab)}</span>`).join("")}</div>
+        <div class="row"><span class="chip mini" data-nt="apply">Apply</span>
+          <span class="chip mini" data-nt="cancel">Cancel</span></div>
       </div>`;
     }
     if (s === "share") {
@@ -584,10 +590,11 @@ class AipaiReefCard extends HTMLElement {
     // chart drag (retime a point) + tap to add
     this._wireChart();
 
-    // moon
-    $$("[data-mn]").forEach((c) => c.onclick = () => this._onMoon(c.dataset.mn));
-    $$("[data-mn2]").forEach((i) => i.onchange = () => this._onMoonTime(i.dataset.mn2, i.value));
-    $$("[data-mlvl]").forEach((b) => b.onclick = () => this._onMoonLevel(+b.dataset.mlvl));
+    // night light (simulated moonlight)
+    $$("[data-nt]").forEach((c) => c.onclick = () => this._onNight(c.dataset.nt));
+    $$("[data-nt2]").forEach((i) => i.onchange = () => this._onNightTime(i.dataset.nt2, i.value));
+    $$("[data-ntlvl]").forEach((b) => b.onclick = () => this._onNightLevel(+b.dataset.ntlvl));
+    $$("[data-ntch]").forEach((c) => c.onclick = () => this._onNightChannel(+c.dataset.ntch));
 
     // share
     $$("[data-share]").forEach((b) => b.onclick = () => this._onShare(b.dataset.share));
@@ -614,7 +621,7 @@ class AipaiReefCard extends HTMLElement {
   _onAct(act) {
     const toggle = (name) => { this._ui.sheet = this._ui.sheet === name ? null : name; };
     if (act === "sched") { this._ensureDraft(); toggle("sched"); this._ui.sel = 0; }
-    else if (act === "moon") { this._ensureDraft(); toggle("moon"); }
+    else if (act === "night") { this._openNight(this._labels(this._lights())); toggle("night"); }
     else if (act === "share") { toggle("share"); this._ui.shareMsg = ""; }
     else if (act === "save") { toggle("save"); }
     else if (act === "clock") { this._call("sync_clock", {}); }
@@ -771,36 +778,48 @@ class AipaiReefCard extends HTMLElement {
     this._draft = null; this._ui.sheet = null; this._render();
   }
 
-  _onMoon(which) {
-    this._ensureDraft();
-    if (which === "toggle") {
-      const on = !!(this._draft.moon.run || this._draft.moon.enabled);
-      this._draft.moon.run = !on; this._draft.moon.enabled = !on;
-      this._render(); return;
-    }
-    if (which === "apply") {
-      const m = this._draft.moon;
-      this._call("set_moon", {
-        serial: this._serials(this._lights()),
-        color: m.color || "#00A0E9", level: clamp100(m.level),
-        start: this._moonStr(m.start), end: this._moonStr(m.end),
-        enable: !!(m.run || m.enabled),
-      });
-    }
-    // Moon is its own device timer; closing the sheet just drops the draft.
-    this._draft = null; this._ui.sheet = null; this._render();
+  // Night light (simulated moonlight): a low overnight level baked into the
+  // ordinary schedule, so it works on every model - not the native moon timer.
+  _openNight(labels) {
+    if (this._ui.night) return;   // keep in-progress edits if re-opening
+    const blue = [];
+    (labels || []).forEach((l, i) => {
+      if (String(l).toLowerCase().includes("blue")) blue.push(i);
+    });
+    const def = blue.length ? blue : (labels && labels.length > 1 ? [1] : [0]);
+    this._ui.night = { on: true, start: "19:00", end: "07:00", level: 10, ch: new Set(def) };
   }
 
-  _onMoonTime(key, value) {
-    this._ensureDraft();
-    const [h, mm] = String(value).split(":").map(Number);
-    this._draft.moon[key] = (h || 0) + (mm || 0) / 100;   // literal HH.MM
+  _onNight(which) {
+    const nt = this._ui.night;
+    if (!nt) return;
+    if (which === "toggle") { nt.on = !nt.on; this._render(); return; }
+    if (which === "apply") {
+      this._call("set_night_light", {
+        serial: this._serials(this._lights()),
+        start: nt.start, end: nt.end, level: clamp100(nt.level),
+        channels: [...nt.ch], enable: !!nt.on,
+      });
+    }
+    this._ui.night = null; this._ui.sheet = null; this._render();
+  }
+
+  _onNightTime(key, value) {
+    if (!this._ui.night) return;
+    this._ui.night[key] = value;   // "HH:MM"; the service uses the hour
     this._render();
   }
 
-  _onMoonLevel(d) {
-    this._ensureDraft();
-    this._draft.moon.level = clamp(clamp100(this._draft.moon.level) + d, 0, 100);
+  _onNightLevel(d) {
+    if (!this._ui.night) return;
+    this._ui.night.level = clamp(clamp100(this._ui.night.level) + d, 0, 100);
+    this._render();
+  }
+
+  _onNightChannel(ci) {
+    if (!this._ui.night) return;
+    const s = this._ui.night.ch;
+    if (s.has(ci)) s.delete(ci); else s.add(ci);
     this._render();
   }
 

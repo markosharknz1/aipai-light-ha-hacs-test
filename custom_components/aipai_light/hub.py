@@ -395,6 +395,44 @@ class AipaiLightHub:
         self.client.save_config(build_saveconfig(self.state))
         return True
 
+    def apply_night_light(
+        self,
+        start_hour: int,
+        end_hour: int,
+        level_pct: int,
+        channels: list[int],
+        enable: bool,
+    ) -> bool:
+        """Simulated moonlight: low level on chosen channels across a night window.
+
+        Written into the ordinary schedule curves and persisted via saveconfig -
+        so it works on every model, including those with no native moon timer
+        (e.g. the A7-S line). Requires a prior readconfig.
+        """
+        if not self.has_state:
+            _LOGGER.warning("apply_night_light skipped for %s: no state read yet", self.serial)
+            return False
+        from .schedule import curve_to_csv, overlay_night
+
+        rows: list[list[int]] = []
+        for row in self.state.road_data:
+            vals = [_safe_int(x) for x in str(row).split(",") if x != ""]
+            rows.append((vals + [0] * 24)[:24])
+        merged = overlay_night(rows, start_hour, end_hour, channels, level_pct, enable)
+        _LOGGER.debug(
+            "WRITE %s night_light %02d:00-%02d:00 level=%d ch=%s enable=%s",
+            self.serial, int(start_hour) % 24, int(end_hour) % 24, level_pct, channels, enable,
+        )
+        return self.apply_schedule(road_data=[curve_to_csv(r) for r in merged])
+
+    def blue_channels(self) -> list[int]:
+        """Channel indices whose label looks like blue - the moonlight default."""
+        blue = [i for i, lab in enumerate(self.labels) if "blue" in str(lab).lower()]
+        if blue:
+            return blue
+        # No blue label (unusual): fall back to channel 2 (index 1), the usual blue.
+        return [1] if self.roads > 1 else [0]
+
     # -- preview / save / discard -----------------------------------------
 
     def capture_snapshot(self) -> dict[str, Any] | None:

@@ -24,7 +24,7 @@ PANEL_ICON = "mdi:jellyfish"
 # dashboard load, so `type: custom:aipai-reef-card` works with no manual
 # resource setup - the point of bundling it with the integration.
 CARD_URL = "/aipai_light/aipai-reef-card.js"
-CARD_VERSION = "0.7.1"   # bump to bust the browser cache when the card changes
+CARD_VERSION = "0.8.0"   # bump to bust the browser cache when the card changes
 
 _REGISTERED_KEY = "aipai_light_panel_registered"
 _CARD_REGISTERED_KEY = "aipai_light_card_registered"

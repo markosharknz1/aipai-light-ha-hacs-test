@@ -241,6 +241,49 @@ set_moon:
       selector:
         boolean:
 
+set_night_light:
+  name: Set night light (simulated moonlight)
+  description: >-
+    Simulate moonlight using the ordinary schedule - a low level on chosen
+    channels across an overnight window, written into the light's 24-hour curves
+    and saved. Works on every model, including those with no native moon timer
+    (e.g. the A7-S line). Re-apply after changing the daytime schedule.
+  fields:
+    serial:
+      name: Serial(s)
+      description: One serial, several serials, or empty for all configured lights.
+      example: "12345678"
+      selector:
+        text:
+          multiple: true
+    start:
+      name: Start
+      example: "19:00"
+      selector:
+        text:
+    end:
+      name: End
+      example: "07:00"
+      selector:
+        text:
+    level:
+      name: Level (%)
+      selector:
+        number:
+          min: 0
+          max: 100
+    channels:
+      name: Channel indices
+      description: >-
+        Zero-based channel indices to light (default: the blue channel(s)).
+      selector:
+        object:
+    enable:
+      name: Enable
+      description: Off clears the night level on those channels in the window.
+      selector:
+        boolean:
+
 preview_schedule:
   name: Preview schedule
   description: >-

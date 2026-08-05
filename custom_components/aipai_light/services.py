@@ -30,6 +30,7 @@ SERVICE_SYNC_CLOCK = "sync_clock"
 SERVICE_SET_SCHEDULE = "set_schedule"
 SERVICE_SET_CHANNEL_PERIOD = "set_channel_period"
 SERVICE_SET_MOON = "set_moon"
+SERVICE_SET_NIGHT_LIGHT = "set_night_light"
 SERVICE_GENERATE_DASHBOARD = "generate_dashboard"
 SERVICE_APPLY_PRESET = "apply_preset"
 SERVICE_SAVE_PRESET = "save_preset"
@@ -103,6 +104,15 @@ _SET_MOON_SCHEMA = vol.Schema({
     vol.Optional("preview", default=False): cv.boolean,
 })
 
+_SET_NIGHT_LIGHT_SCHEMA = vol.Schema({
+    _SERIAL: _SERIAL_VALUE,
+    vol.Required("start"): cv.string,               # "HH:MM" (hour is used)
+    vol.Required("end"): cv.string,
+    vol.Required("level", default=10): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+    vol.Optional("channels"): [vol.All(vol.Coerce(int), vol.Range(min=0, max=31))],
+    vol.Optional("enable", default=True): cv.boolean,
+})
+
 
 # A time point: an hour, plus a level for every channel at that hour.
 _POINT_SCHEMA = vol.Schema({
@@ -155,6 +165,14 @@ _IMPORT_SCHEMA = vol.Schema({
     vol.Required("config"): vol.Any(cv.string, dict),
     vol.Optional("apply", default=True): cv.boolean,   # off = validate only
 })
+
+
+def _hour_of(value: Any) -> int:
+    """Whole hour from an 'HH:MM' string or a number (moonlight uses hours)."""
+    s = str(value).strip()
+    if ":" in s:
+        return int(s.split(":", 1)[0])
+    return int(float(s))
 
 
 def _light_hubs(hass: HomeAssistant, serial: str | list[str] | None) -> list[AipaiLightHub]:
@@ -237,6 +255,18 @@ def async_register_services(hass: HomeAssistant) -> None:
                 end_hhmm=hhmm_dotted(call.data["end"]),
                 enable=call.data["enable"],
                 save=not call.data["preview"],
+            )
+
+    async def handle_set_night_light(call: ServiceCall) -> None:
+        serial = call.data.get("serial")
+        for hub in _light_hubs(hass, serial):
+            channels = call.data.get("channels") or hub.blue_channels()
+            hub.apply_night_light(
+                start_hour=_hour_of(call.data["start"]),
+                end_hour=_hour_of(call.data["end"]),
+                level_pct=call.data["level"],
+                channels=channels,
+                enable=call.data["enable"],
             )
 
     async def handle_generate_dashboard(call: ServiceCall) -> dict[str, Any]:
@@ -563,6 +593,9 @@ def async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_SET_SCHEDULE, handle_set_schedule, _SET_SCHEDULE_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_SET_CHANNEL_PERIOD, handle_set_channel_period, _PERIOD_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_SET_MOON, handle_set_moon, _SET_MOON_SCHEMA)
+    hass.services.async_register(
+        DOMAIN, SERVICE_SET_NIGHT_LIGHT, handle_set_night_light, _SET_NIGHT_LIGHT_SCHEMA
+    )
 
 
 def _resolve_channel(hub: AipaiLightHub, channel: Any) -> int | None:
