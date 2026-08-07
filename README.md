@@ -4,7 +4,7 @@
 
 An unofficial Home Assistant custom integration for AIPAI-branded WiFi aquarium
 LED controllers (sold under names including A8-SE8, A8SE Blue/Max, A8 PRO
-Blue/Max, and A7 III — clones of the EcoTech XR30 G5). Built by
+Blue/Max, and A7 III). Built by
 reverse-engineering the official AIPAI Android app, since that app is unreliable
 and has no official local or cloud API.
 
@@ -69,7 +69,7 @@ Editing the card previews **live on the real lights** and stays until you press
 Channel layouts for the whole A7/A8 family are applied automatically from the
 model each light reports (A8-SE8, A8-PRO5/6, A8-SEB/PROB, A8-SE/S, A8-HP, A8-X,
 A7-S, A7-P, A7-P4, A46-P, …). Unknown models fall back to a channel count derived
-from the light's own state. **Only the A8-SE8 has been verified on real
+from the light's own state. **The A8-SE8 and A7S III have been verified on real
 hardware;** other mappings are transcribed from the app — please report back.
 
 > **A7S III — knobs must be to the LEFT.** The A7S III has two physical knobs
