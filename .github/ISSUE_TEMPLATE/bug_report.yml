@@ -1,0 +1,70 @@
+name: Bug report
+description: Something isn't working with the AIPAI Light integration
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! A little detail up front saves a lot of back-and-forth.
+        For questions or "how do I…", please use
+        [Discussions](https://github.com/markosharknz1/ha-aipai-light/discussions) instead.
+  - type: checkboxes
+    attributes:
+      label: Before you start
+      options:
+        - label: I'm on the latest version of the integration (updated via HACS).
+          required: true
+        - label: I searched existing issues and didn't find this already reported.
+          required: true
+  - type: textarea
+    attributes:
+      label: What happened?
+      description: What went wrong, and what did you expect instead?
+      placeholder: e.g. The night light won't turn off / a light won't appear / the schedule runs at the wrong time…
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Light model(s)
+      description: The model each affected light reports (in the AIPAI app or the device info).
+      placeholder: e.g. A8-SE8 (8-ch), A7S III (6-ch)
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: Which part of the integration?
+      multiple: true
+      options:
+        - Adding a light / network search / discovery
+        - Schedule editor
+        - Night light (simulated moonlight)
+        - Entities (channels / switch / sensors)
+        - Clock / timing / DST
+        - The Reef card (dashboard)
+        - Other / not sure
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Integration version
+      placeholder: e.g. 0.9.3
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Home Assistant version
+      placeholder: e.g. 2026.8.x
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Logs
+      description: >-
+        Enable debug logging by adding this to configuration.yaml, restarting,
+        reproducing the problem, then pasting the `custom_components.aipai_light`
+        lines here.  logger:  logs:  custom_components.aipai_light: debug
+      render: shell
+  - type: textarea
+    attributes:
+      label: Anything else?
+      description: Screenshots, a diagnostics download (Settings → device → Download diagnostics — the serial is redacted), or other context.
