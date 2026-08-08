@@ -195,11 +195,13 @@ def night_hours(start_hour: int, end_hour: int) -> list[int]:
     """Whole hours a night window covers, inclusive of start, exclusive of end.
 
     Wraps past midnight: night_hours(19, 7) -> 19,20,21,22,23,0,1,2,3,4,5,6.
-    start == end means the whole day.
+    start == end means NO window (empty) - a "night light" from a time to the
+    same time is almost always a mistake, and lighting the tank 24/7 is a nasty
+    surprise, so we treat it as off rather than all-day.
     """
     s, e = int(start_hour) % 24, int(end_hour) % 24
     if s == e:
-        return list(range(24))
+        return []
     if s < e:
         return list(range(s, e))
     return list(range(s, 24)) + list(range(0, e))

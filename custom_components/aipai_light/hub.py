@@ -491,6 +491,7 @@ class AipaiLightHub:
         ok = self.apply_schedule(road_data=[curve_to_csv(r) for r in merged])
         self._persist_night()
         self._persist_day()
+        self._notify()  # push the new curves so the card chart updates immediately
         return ok
 
     def attach_night_store(self, store) -> None:  # noqa: ANN001
