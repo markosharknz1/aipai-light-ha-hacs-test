@@ -94,8 +94,17 @@ class AipaiLocalClient:
 
     # -- internals ---------------------------------------------------------
     def _submit(self, coro: Coroutine[Any, Any, None]) -> None:
-        """Schedule a coroutine on the event loop from any thread."""
-        self._hass.loop.call_soon_threadsafe(self._hass.async_create_task, coro)
+        """Schedule a coroutine on the event loop from any thread.
+
+        Uses a BACKGROUND task - a plain async_create_task is awaited by HA's
+        bootstrap, so a slow/pending HTTP read blocks setup ("Setup timed out for
+        stage 2 waiting on AipaiLocalClient._async_read"). Background tasks aren't
+        awaited at setup boundaries, so reads/commands never hold up startup.
+        """
+        self._hass.loop.call_soon_threadsafe(self._spawn, coro)
+
+    def _spawn(self, coro: Coroutine[Any, Any, None]) -> None:
+        self._hass.async_create_background_task(coro, name=f"aipai_local_{self._serial}")
 
     async def _async_read(self) -> None:
         raw = await self._fetch("read=config")
