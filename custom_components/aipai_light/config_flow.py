@@ -169,14 +169,16 @@ class AipaiLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry) -> "AipaiOptionsFlow":  # noqa: ANN001
-        return AipaiOptionsFlow(config_entry)
+        return AipaiOptionsFlow()
 
 
 class AipaiOptionsFlow(config_entries.OptionsFlow):
-    """Tune runtime options (currently the state poll interval)."""
+    """Tune runtime options (poll interval, local control).
 
-    def __init__(self, config_entry) -> None:  # noqa: ANN001
-        self.config_entry = config_entry
+    Note: don't set ``self.config_entry`` here - on modern Home Assistant it's a
+    read-only property provided by the framework, and assigning it raises (which
+    surfaced as a 500 "config flow could not be loaded").
+    """
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         if user_input is not None:
