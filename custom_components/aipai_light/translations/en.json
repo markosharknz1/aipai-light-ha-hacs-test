@@ -51,7 +51,8 @@
       "init": {
         "title": "AIPAI device options",
         "data": {
-          "poll_interval": "State poll interval (seconds)"
+          "poll_interval": "State poll interval (seconds)",
+          "local_control": "Local control (talk to the light on your LAN, no vendor cloud)"
         }
       }
     }

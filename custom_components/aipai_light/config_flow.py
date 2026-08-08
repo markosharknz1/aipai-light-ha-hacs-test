@@ -21,6 +21,7 @@ from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
     CONF_DEVICE_TYPE,
+    CONF_LOCAL_CONTROL,
     CONF_MODEL,
     CONF_NAME,
     CONF_POLL_INTERVAL,
@@ -181,12 +182,16 @@ class AipaiOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        current = self.config_entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
-        schema = vol.Schema(
-            {
-                vol.Optional(CONF_POLL_INTERVAL, default=current): vol.All(
-                    vol.Coerce(int), vol.Range(min=10, max=600)
-                )
-            }
-        )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        opts = self.config_entry.options
+        current = opts.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
+        fields: dict[Any, Any] = {
+            vol.Optional(CONF_POLL_INTERVAL, default=current): vol.All(
+                vol.Coerce(int), vol.Range(min=10, max=600)
+            )
+        }
+        # Local (cloud-free) control is a light-only option.
+        if self.config_entry.data.get(CONF_DEVICE_TYPE, DEVICE_TYPE_LIGHT) == DEVICE_TYPE_LIGHT:
+            fields[vol.Optional(
+                CONF_LOCAL_CONTROL, default=opts.get(CONF_LOCAL_CONTROL, False)
+            )] = bool
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(fields))

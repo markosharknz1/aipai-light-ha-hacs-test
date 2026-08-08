@@ -12,6 +12,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import (
     CONF_DEVICE_TYPE,
+    CONF_LOCAL_CONTROL,
     CONF_MODEL,
     CONF_NAME,
     CONF_POLL_INTERVAL,
@@ -34,9 +35,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     poll = entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
 
     if device_type == DEVICE_TYPE_LIGHT:
+        # Local (cloud-free) control: if enabled, find the light's LAN IP by
+        # serial. If it can't be found, fall back to the cloud so the light still
+        # works (with a clear log) rather than failing setup.
+        local_ip = None
+        if entry.options.get(CONF_LOCAL_CONTROL):
+            import logging as _logging
+
+            from .discovery import async_find_ip
+
+            local_ip = await async_find_ip(hass, serial)
+            if local_ip:
+                _logging.getLogger(__name__).info(
+                    "AIPAI %s: local control at %s", serial, local_ip
+                )
+            else:
+                _logging.getLogger(__name__).warning(
+                    "AIPAI %s: local control is on but the light wasn't found on "
+                    "the network - falling back to cloud for now.", serial
+                )
         hub: AipaiLightHub | ExperimentalDeviceHub = AipaiLightHub(
             hass, serial, model_hint=entry.data.get(CONF_MODEL) or None,
             poll_interval=poll, name=entry.data.get(CONF_NAME) or None,
+            local_ip=local_ip,
         )
     else:
         hub = ExperimentalDeviceHub(hass, serial, device_type, poll_interval=poll)

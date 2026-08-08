@@ -23,6 +23,7 @@ CONF_DEVICE_TYPE = "device_type"
 CONF_POLL_INTERVAL = "poll_interval"
 CONF_NAME = "name"
 CONF_SUBNET = "subnet"
+CONF_LOCAL_CONTROL = "local_control"
 
 DEFAULT_POLL_INTERVAL = 45  # seconds
 

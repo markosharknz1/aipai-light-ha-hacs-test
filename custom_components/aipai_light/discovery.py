@@ -96,6 +96,17 @@ async def async_local_subnets(hass: HomeAssistant) -> list[str]:
     return subnets
 
 
+async def async_find_ip(
+    hass: HomeAssistant, serial: str, subnets: list[str] | None = None
+) -> str | None:
+    """Scan the local subnet(s) for a specific serial; return its IP, or None."""
+    cidrs = subnets or await async_local_subnets(hass)
+    for light in await async_scan(hass, cidrs):
+        if str(light.serial) == str(serial):
+            return light.ip
+    return None
+
+
 async def _probe_host(
     session: aiohttp.ClientSession, ip: str, sem: asyncio.Semaphore
 ) -> FoundLight | None:

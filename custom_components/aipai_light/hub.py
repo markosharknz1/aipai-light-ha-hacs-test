@@ -31,6 +31,7 @@ class AipaiLightHub:
     def __init__(
         self, hass: HomeAssistant, serial: str, model_hint: str | None = None,
         poll_interval: int = POLL_INTERVAL, name: str | None = None,
+        local_ip: str | None = None,
     ) -> None:
         self.hass = hass
         self.serial = serial
@@ -70,11 +71,23 @@ class AipaiLightHub:
         self._off_unsub = None
         self._off_prev: tuple[str, list[int]] | None = None
         self.off_until = None
-        self.client = AipaiMqttClient(
-            serial,
-            on_message=self._handle_message,
-            on_connection_change=self._handle_connection_change,
-        )
+        # Transport: local HTTP (cloud-free) when an IP is supplied, else the
+        # vendor cloud broker. Both feed the same on_message/on_connection_change.
+        self.local = bool(local_ip)
+        if local_ip:
+            from .local_client import AipaiLocalClient
+
+            self.client = AipaiLocalClient(
+                hass, serial, local_ip,
+                on_message=self._handle_message,
+                on_connection_change=self._handle_connection_change,
+            )
+        else:
+            self.client = AipaiMqttClient(
+                serial,
+                on_message=self._handle_message,
+                on_connection_change=self._handle_connection_change,
+            )
 
     # -- lifecycle ---------------------------------------------------------
 

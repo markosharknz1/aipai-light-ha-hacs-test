@@ -24,9 +24,20 @@ zeroed; the model table decides how many to actually surface.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from .const import CHANNEL_CMD_MAX, CHANNEL_PCT_MAX, resolve_model
+
+# The pipe-delimited config body ("on|1|...|MODEL"), used to pull it out of a
+# local HTTP reply that may wrap it in JSON or a callback.
+_CONFIG_BODY_RE = re.compile(r"(?:on|off)\|[^\"']+")
+
+
+def extract_config_body(raw: str) -> str | None:
+    """Pull the ``on|...`` config body out of a raw readconfig reply, or None."""
+    m = _CONFIG_BODY_RE.search(raw or "")
+    return m.group(0).strip() if m else None
 
 # saveconfig hardcodes these fan thresholds (from public.js DevicesSave).
 _SAVE_TEMP_ON = 35
